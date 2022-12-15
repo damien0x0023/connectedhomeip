@@ -153,10 +153,13 @@ def read_key_bin_file(path: str):
         return None
 
 
-def setup_out_dir(args, serial:str):
-    out_dir = os.sep.join([args.output, vid_pid_str(args.vendor_id, args.product_id)])
+def setup_out_dir(out_dir, serial:str):
+    # Append device's serial number into device_sn.csv
+    csv_data = serial + ',\n'
+    device_sn_file = os.sep.join([out_dir, 'device_sn.csv'])
+    with open(device_sn_file, 'a') as f:
+        f.write(csv_data)
 
-    os.makedirs(out_dir, exist_ok=True)
     out_dir = os.path.realpath(out_dir)
     dirs = {
         'output' : os.sep.join([out_dir, serial]),
@@ -475,8 +478,10 @@ def generate_partition(args, out_dirs):
     ih.tobinfile(os.sep.join([out_dirs['output'], 'factory_data.bin']))
 
 
-def generate_json_summary(args, out_dirs, pai_certs, dacs_cert):
+def generate_json_summary(args, out_dirs, pai_certs, dacs_cert, serial_num_str):
     json_dict = dict()
+    json_dict['serial_num'] = serial_num_str
+
     for key, nvs_value in NVS_MEMORY.items():
         if (not isinstance(nvs_value, bytes) and not isinstance(nvs_value, bytearray)):
             json_dict[key] = nvs_value
@@ -694,11 +699,21 @@ def main():
     else:
         serial_num_int = int(args.serial_num, 16)
 
+    # Create folder as {vendorid}_{productid} under out folder
+    out_dir = os.sep.join([args.output, vid_pid_str(args.vendor_id, args.product_id)])
+    os.makedirs(out_dir, exist_ok=True)
+    
+    # Create device_sn.csv and add the header
+    csv_header = 'Serial Number,\n'
+    device_sn_file = os.sep.join([out_dir, 'device_sn.csv'])
+    with open(device_sn_file, 'w') as f:
+        f.write(csv_header)
+
     for i in range(args.count):
         pai_cert = {}
         serial_num_str = format(serial_num_int + i, 'x')
         logger.info("Generating for {}".format(serial_num_str))
-        out_dirs = setup_out_dir(args, serial_num_str)
+        out_dirs = setup_out_dir(out_dir, serial_num_str)
         add_additional_kv(args, serial_num_str)
         generate_passcode(args, out_dirs)
         generate_discriminator(args, out_dirs)
@@ -706,7 +721,7 @@ def main():
             pai_cert = setup_root_certificates(args, out_dirs)
         dacs_cert = write_device_unique_data(args, out_dirs, pai_cert)
         generate_partition(args, out_dirs)
-        generate_json_summary(args, out_dirs, pai_cert, dacs_cert)
+        generate_json_summary(args, out_dirs, pai_cert, dacs_cert, serial_num_str)
 
 if __name__ == "__main__":
     main()

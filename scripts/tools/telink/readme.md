@@ -129,20 +129,21 @@ out
     │   ├── pin_disc.csv
     │   ├── qrcode.png
     |   └── summary.json
-    └── aabbccddeeff11223344556677889903
-        ├── factory_data.bin
-        ├── factory_data.hex
-        ├── internal
-        │   ├── DAC_cert.der
-        │   ├── DAC_cert.pem
-        │   ├── DAC_key.pem
-        │   ├── DAC_private_key.bin
-        │   ├── DAC_public_key.bin
-        │   └── pai_cert.der
-        ├── onb_codes.csv
-        ├── pin_disc.csv
-        ├── qrcode.png
-        └── summary.json
+    ├── aabbccddeeff11223344556677889903
+    |   ├── factory_data.bin
+    |   ├── factory_data.hex
+    |   ├── internal
+    |   │   ├── DAC_cert.der
+    |   │   ├── DAC_cert.pem
+    |   │   ├── DAC_key.pem
+    |   │   ├── DAC_private_key.bin
+    |   │   ├── DAC_public_key.bin
+    |   │   └── pai_cert.der
+    |   ├── onb_codes.csv
+    |   ├── pin_disc.csv
+    |   ├── qrcode.png
+    |   └── summary.json
+    └── device_sn.csv
 ```
 
 Tool generates following output files:
