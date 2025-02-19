@@ -18,9 +18,27 @@
 
 import argparse
 import os
+import requests
 import subprocess
 import sys
 
+def validate_token(token):
+    url = "https://api.github.com/user"
+    headers = {
+        "Authorization": f"token {token}"
+    }
+
+    response = requests.get(url, headers=headers)
+    
+    if response.status_code == 200:
+        print("[Validation result]:Token is valid.")
+        return True
+    elif response.status_code == 401:
+        print("Error: Invalid or expired GitHub token.")
+        return False
+    else:
+        print(f"Error: Failed to verify token. HTTP Status Code: {response.status_code}")
+        return False
 
 def main():
 
@@ -38,12 +56,23 @@ def main():
         parser.add_argument("hash", help="Update Telink Zephyr to specific revision.")
         parser.add_argument("remote", default="https://github.com/telink-semi/zephyr",
                             help="New remote URL for the Zephyr repository.")
+        parser.add_argument("--token", help="GitHub token for accessing private repositories.")
 
         args = parser.parse_args()
 
+        if args.token:
+            token = args.token
+            if not validate_token(token):
+                sys.exit(1)
+            repo_url = args.remote.replace("https://", f"https://{args.token}@")
+        else:
+            repo_url = args.remote
+
+        print(f"Using repo URL: {repo_url}")
+
         remote_name='custom'
 
-        command = ['git', '-C', zephyr_base, 'remote', 'add', remote_name, args.remote]
+        command = ['git', '-C', zephyr_base, 'remote', 'add', remote_name, repo_url]
         subprocess.run(command, check=True)
 
         command = ['git', '-C', zephyr_base, 'fetch', remote_name]
