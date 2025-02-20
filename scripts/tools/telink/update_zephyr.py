@@ -21,6 +21,7 @@ import os
 import requests
 import subprocess
 import sys
+import yaml
 
 def validate_token(token):
     url = "https://api.github.com/user"
@@ -39,6 +40,56 @@ def validate_token(token):
     else:
         print(f"Error: Failed to verify token. HTTP Status Code: {response.status_code}")
         return False
+
+def update_repo_url_with_token(repo_name, token, west_yml_path):
+    try:
+        with open(west_yml_path, 'r') as file:
+            west_yml = yaml.safe_load(file)
+
+        updated = False
+        for project in west_yml.get('manifest', {}).get('projects', []):
+            if project['name'] == repo_name:
+                if not project['url'].startswith("https://"):
+                    print(f"Error: URL for {repo_name} is not an HTTPS URL: {project['url']}")
+                    sys.exit(1)
+
+                new_url = project['url'].replace("https://", f"https://{token}@")
+                print(f"Updating URL for {repo_name}: {project['url']} -> {new_url}")
+                subprocess.run(['west', 'config', f'projects.{repo_name}.url', new_url], check=True)
+                updated = True
+                break
+
+        if not updated:
+            print(f"Error: Project {repo_name} not found in west.yml.")
+            sys.exit(1)
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error: Failed to update URL for {repo_name}.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+def update_repos_url_with_token(repos, token, west_yml_path):
+    for repo_name in repos:
+        update_repo_url_with_token(repo_name, token, west_yml_path)
+
+def delete_repo_url_config(repo_name):
+    try:
+        url = subprocess.check_output(['west', 'config', f'projects.{repo_name}.url'], universal_newlines=True).strip()
+        if url:
+            print(f"Deleting URL config for {repo_name}...")
+            subprocess.run(['west', 'config', '--delete', f'projects.{repo_name}.url'], check=True)
+        else:
+            print(f"Warning: URL config for {repo_name} not found.")
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error: Failed to delete URL config for {repo_name}.")
+        sys.exit(1)
+
+def delete_repos_url(repos):
+    for repo_name in repos:
+        delete_repo_url_config(repo_name)
 
 def main():
 
@@ -60,10 +111,13 @@ def main():
 
         args = parser.parse_args()
 
+        token_valid = False
         if args.token:
             token = args.token
-            if not validate_token(token):
+            token_valid = validate_token(token)
+            if not token_valid:
                 sys.exit(1)
+
             repo_url = args.remote.replace("https://", f"https://{args.token}@")
         else:
             repo_url = args.remote
@@ -72,8 +126,14 @@ def main():
 
         remote_name='custom'
 
-        command = ['git', '-C', zephyr_base, 'remote', 'add', remote_name, repo_url]
-        subprocess.run(command, check=True)
+        command = ['git', '-C', zephyr_base, 'remote', 'get-url', remote_name]
+        result = subprocess.run(command, capture_output=True, text=True)
+        if result.returncode != 0:
+            command = ['git', '-C', zephyr_base, 'remote', 'add', remote_name, repo_url]
+            subprocess.run(command, check=True)
+        else:
+            command = ['git', '-C', zephyr_base, 'remote', 'set-url', remote_name, repo_url]
+            subprocess.run(command, check=True)
 
         command = ['git', '-C', zephyr_base, 'fetch', remote_name]
         subprocess.run(command, check=True)
@@ -81,14 +141,28 @@ def main():
         command = ['git', '-C', zephyr_base, 'reset', args.hash, '--hard']
         subprocess.run(command, check=True)
 
+        repos_to_update = ['mcuboot', 'hal_telink']
+        if token_valid:
+            west_yml_path = os.path.join(zephyr_base, 'west.yml')
+            if os.path.exists(west_yml_path):
+                update_repos_url_with_token(repos_to_update, args.token, west_yml_path)
+            else:
+                print(f"Error: {west_yml_path} not found.")
+                sys.exit(1)
+
         command = ['west', 'update', '-o=--depth=1', '-n', '-f', 'smart']
         subprocess.run(command, check=True)
 
         command = ['west', 'blobs', 'fetch', 'hal_telink']
         subprocess.run(command, check=True)
 
-    except (RuntimeError, subprocess.CalledProcessError) as e:
-        print(e)
+        delete_repos_url(repos_to_update)
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error: Command failed with exit code {e.returncode}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
         sys.exit(1)
 
 
