@@ -19,6 +19,8 @@ on:
     branches:
       - dual_mode_develop_ci_private
   pull_request:
+    branches-ignore:
+            - 'dependabot/**'
   merge_group:
 
 concurrency:
