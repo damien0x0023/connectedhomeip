@@ -41,27 +41,28 @@ def validate_token(token):
         print(f"Error: Failed to verify token. HTTP Status Code: {response.status_code}")
         return False
 
-def update_repo_url_with_token(repo_name, token, west_yml_path):
+
+def update_repo_url_with_token_in_west(repos, token, west_yml_path):
     try:
         with open(west_yml_path, 'r') as file:
             west_yml = yaml.safe_load(file)
 
         updated = False
         for project in west_yml.get('manifest', {}).get('projects', []):
-            if project['name'] == repo_name:
+            repo_name = project['name']
+            if repo_name in repos:
                 if not project['url'].startswith("https://"):
                     print(f"Error: URL for {repo_name} is not an HTTPS URL: {project['url']}")
                     sys.exit(1)
 
                 new_url = project['url'].replace("https://", f"https://{token}@")
                 print(f"Updating URL for {repo_name}: {project['url']} -> {new_url}")
-                subprocess.run(['west', 'config', f'projects.{repo_name}.url', new_url], check=True)
+                # subprocess.run(['west', 'config', f'projects.{repo_name}.url', new_url], check=True)
+                project['url'] = new_url
                 updated = True
-                break
 
-        if not updated:
-            print(f"Error: Project {repo_name} not found in west.yml.")
-            sys.exit(1)
+        with open(west_yml_path, 'w') as file:
+            yaml.safe_dump(west_yml, file)
 
     except subprocess.CalledProcessError as e:
         print(f"Error: Failed to update URL for {repo_name}.")
@@ -69,27 +70,6 @@ def update_repo_url_with_token(repo_name, token, west_yml_path):
     except Exception as e:
         print(f"Error: {e}")
         sys.exit(1)
-
-def update_repos_url_with_token(repos, token, west_yml_path):
-    for repo_name in repos:
-        update_repo_url_with_token(repo_name, token, west_yml_path)
-
-def delete_repo_url_config(repo_name):
-    try:
-        url = subprocess.check_output(['west', 'config', f'projects.{repo_name}.url'], universal_newlines=True).strip()
-        if url:
-            print(f"Deleting URL config for {repo_name}...")
-            subprocess.run(['west', 'config', '--delete', f'projects.{repo_name}.url'], check=True)
-        else:
-            print(f"Warning: URL config for {repo_name} not found.")
-
-    except subprocess.CalledProcessError as e:
-        print(f"Error: Failed to delete URL config for {repo_name}.")
-        sys.exit(1)
-
-def delete_repos_url(repos):
-    for repo_name in repos:
-        delete_repo_url_config(repo_name)
 
 def main():
 
@@ -145,7 +125,7 @@ def main():
         if token_valid:
             west_yml_path = os.path.join(zephyr_base, 'west.yml')
             if os.path.exists(west_yml_path):
-                update_repos_url_with_token(repos_to_update, args.token, west_yml_path)
+                update_repo_url_with_token_in_west(repos_to_update, args.token, west_yml_path)
             else:
                 print(f"Error: {west_yml_path} not found.")
                 sys.exit(1)
@@ -155,8 +135,6 @@ def main():
 
         command = ['west', 'blobs', 'fetch', 'hal_telink']
         subprocess.run(command, check=True)
-
-        delete_repos_url(repos_to_update)
 
     except subprocess.CalledProcessError as e:
         print(f"Error: Command failed with exit code {e.returncode}")
