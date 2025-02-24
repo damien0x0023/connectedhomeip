@@ -1,6 +1,9 @@
 name: Checkout submodules
 description: Checkout submodules
 inputs:
+  token:
+    description: 'GitHub token for accessing private submodules'
+    required: true
   extra-parameters:
     description: "extra parameters"
     required: false
@@ -11,9 +14,15 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Check token
+      shell: bash
+      run: |
+        echo "Testing access to private repository 'dummy_CBB' with provided GitHub token..."
+        curl -H "Authorization: token ${{ inputs.token }}" https://api.github.com/repos/damien0x0023/dummy_CBB
+
     - uses: Wandalen/wretry.action@v1.4.10
       name: Checkout submodules
       with:
-        command: scripts/checkout_submodules.py --allow-changing-global-git-config --shallow --platform ${{ inputs.platform }} ${{ inputs.extra-parameters }}
+        command: scripts/checkout_submodules.py --allow-changing-global-git-config --shallow --platform ${{ inputs.platform }} --token ${{ inputs.token }} ${{ inputs.extra-parameters }}
         attempt_limit: 3
         attempt_delay: 2000

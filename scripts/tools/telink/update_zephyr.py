@@ -22,6 +22,8 @@ import requests
 import subprocess
 import sys
 import yaml
+import tempfile
+
 
 def validate_token(token):
     url = "https://api.github.com/user"
@@ -32,7 +34,7 @@ def validate_token(token):
     response = requests.get(url, headers=headers)
     
     if response.status_code == 200:
-        print("[Validation result]:Token is valid.")
+        print("[Validation result]: Token is valid.")
         return True
     elif response.status_code == 401:
         print("Error: Invalid or expired GitHub token.")
@@ -44,6 +46,12 @@ def validate_token(token):
 
 def update_repo_url_with_token_in_west(repos, token, west_yml_path):
     try:
+        # Create a backup of the original west.yml file
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as backup_file:
+            with open(west_yml_path, 'r') as original_file:
+                backup_file.write(original_file.read())
+            backup_path = backup_file.name
+
         with open(west_yml_path, 'r') as file:
             west_yml = yaml.safe_load(file)
 
@@ -57,22 +65,35 @@ def update_repo_url_with_token_in_west(repos, token, west_yml_path):
 
                 new_url = project['url'].replace("https://", f"https://{token}@")
                 print(f"Updating URL for {repo_name}: {project['url']} -> {new_url}")
-                # subprocess.run(['west', 'config', f'projects.{repo_name}.url', new_url], check=True)
                 project['url'] = new_url
                 updated = True
 
         with open(west_yml_path, 'w') as file:
             yaml.safe_dump(west_yml, file)
 
-    except subprocess.CalledProcessError as e:
-        print(f"Error: Failed to update URL for {repo_name}.")
-        sys.exit(1)
+        return backup_path
+
     except Exception as e:
         print(f"Error: {e}")
         sys.exit(1)
 
-def main():
 
+def restore_west_yml(backup_path, west_yml_path):
+    """
+    Restore the original west.yml file from the backup.
+    """
+    try:
+        with open(backup_path, 'r') as backup_file:
+            with open(west_yml_path, 'w') as original_file:
+                original_file.write(backup_file.read())
+        os.remove(backup_path)
+        print("Restored original west.yml file")
+    except Exception as e:
+        print(f"Error: Failed to restore west.yml: {e}")
+        sys.exit(1)
+
+
+def main():
     try:
         zephyr_base = os.getenv("ZEPHYR_BASE")
         if not zephyr_base:
@@ -104,7 +125,7 @@ def main():
 
         print(f"Using repo URL: {repo_url}")
 
-        remote_name='custom'
+        remote_name = 'custom'
 
         command = ['git', '-C', zephyr_base, 'remote', 'get-url', remote_name]
         result = subprocess.run(command, capture_output=True, text=True)
@@ -121,20 +142,25 @@ def main():
         command = ['git', '-C', zephyr_base, 'reset', args.hash, '--hard']
         subprocess.run(command, check=True)
 
-        repos_to_update = ['mcuboot', 'hal_telink']
-        if token_valid:
-            west_yml_path = os.path.join(zephyr_base, 'west.yml')
-            if os.path.exists(west_yml_path):
-                update_repo_url_with_token_in_west(repos_to_update, args.token, west_yml_path)
-            else:
-                print(f"Error: {west_yml_path} not found.")
-                sys.exit(1)
+        backup_path = None
+        try:
+            repos_to_update = ['mcuboot', 'hal_telink']
+            if token_valid:
+                west_yml_path = os.path.join(zephyr_base, 'west.yml')
+                if os.path.exists(west_yml_path):
+                    backup_path = update_repo_url_with_token_in_west(repos_to_update, args.token, west_yml_path)
+                else:
+                    print(f"Error: {west_yml_path} not found.")
+                    sys.exit(1)
 
-        command = ['west', 'update', '-o=--depth=1', '-n', '-f', 'smart']
-        subprocess.run(command, check=True)
+            command = ['west', 'update', '-o=--depth=1', '-n', '-f', 'smart']
+            subprocess.run(command, check=True)
 
-        command = ['west', 'blobs', 'fetch', 'hal_telink']
-        subprocess.run(command, check=True)
+            command = ['west', 'blobs', 'fetch', 'hal_telink']
+            subprocess.run(command, check=True)
+        finally:
+            if backup_path:
+                restore_west_yml(backup_path, os.path.join(zephyr_base, 'west.yml'))
 
     except subprocess.CalledProcessError as e:
         print(f"Error: Command failed with exit code {e.returncode}")

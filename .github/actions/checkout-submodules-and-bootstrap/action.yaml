@@ -1,6 +1,9 @@
 name: Checkout submodules & Bootstrap
 description: Checkout submodules & Bootstrap
 inputs:
+  token:
+    description: 'GitHub token for accessing private submodules'
+    required: true
   platform:
     description: "Platform name"
     required: true
@@ -24,6 +27,7 @@ runs:
     - name: Checkout submodules
       uses: ./.github/actions/checkout-submodules
       with:
+        token: ${{ inputs.token }}
         platform: ${{ inputs.platform }}
         extra-parameters: ${{ inputs.extra-submodule-parameters }}
     - name: Bootstrap

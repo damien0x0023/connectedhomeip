@@ -20,6 +20,7 @@ import configparser
 import logging
 import os
 import subprocess
+import tempfile
 from collections import namedtuple
 
 CHIP_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -97,30 +98,82 @@ def make_chip_root_safe_directory() -> None:
             ['git', 'config', '--global', '--add', 'safe.directory', CHIP_ROOT])
 
 
-def checkout_modules(modules: list, shallow: bool, force: bool, recursive: bool, jobs: int) -> None:
-    names = ', '.join([module.name for module in modules])
-    logging.info(f'Checking out: {names}')
+def update_gitmodules_with_token(token: str) -> str:
+    """
+    Update the .gitmodules file to include the PAT in the dummy_CBB submodule URL.
+    Returns the path to a backup of the original .gitmodules file.
+    """
+    gitmodules_path = os.path.join(CHIP_ROOT, '.gitmodules')
+    
+    # Create a backup of the original .gitmodules file
+    with tempfile.NamedTemporaryFile(mode='w', delete=False) as backup_file:
+        with open(gitmodules_path, 'r') as original_file:
+            backup_file.write(original_file.read())
+        backup_path = backup_file.name
 
-    cmd = ['git', '-C', CHIP_ROOT, 'submodule', '--quiet', 'update', '--init']
-    cmd += ['--depth', '1'] if shallow else []
-    cmd += ['--force'] if force else []
-    cmd += ['--recursive'] if recursive else []
-    cmd += ['--jobs', f'{jobs}'] if jobs else []
-    module_paths = [module.path for module in modules]
+    config = configparser.ConfigParser()
+    config.read(gitmodules_path)
 
-    subprocess.check_call(cmd + module_paths)
+    for section in config.sections():
+        if 'dummy_CBB' in section:
+            original_url = config[section]['url']
+            if token and 'https://' in original_url:
+                # Embed the token in the URL
+                new_url = original_url.replace(
+                    'https://', f'https://{token}@')
+                config[section]['url'] = new_url
+                logging.info(f'Updated URL for dummy_CBB to include PAT')
 
-    if recursive:
-        # We've recursively checkouted all submodules.
-        pass
-    else:
-        # We've checkouted all top-level submodules.
-        # We're going to recursively checkout submodules whose recursive configuration is true.
-        cmd += ['--recursive']
-        module_paths = [module.path for module in modules if module.recursive]
+    with open(gitmodules_path, 'w') as f:
+        config.write(f)
 
-        if module_paths:
-            subprocess.check_call(cmd + module_paths)
+    return backup_path
+
+
+def restore_gitmodules(backup_path: str) -> None:
+    """
+    Restore the original .gitmodules file from the backup.
+    """
+    gitmodules_path = os.path.join(CHIP_ROOT, '.gitmodules')
+    with open(backup_path, 'r') as backup_file:
+        with open(gitmodules_path, 'w') as original_file:
+            original_file.write(backup_file.read())
+    os.remove(backup_path)
+    logging.info('Restored original .gitmodules file')
+
+
+def checkout_modules(modules: list, shallow: bool, force: bool, recursive: bool, jobs: int, token: str = None) -> None:
+    backup_path = None
+    try:
+        if token:
+            backup_path = update_gitmodules_with_token(token)
+
+        names = ', '.join([module.name for module in modules])
+        logging.info(f'Checking out: {names}')
+
+        cmd = ['git', '-C', CHIP_ROOT, 'submodule', '--quiet', 'update', '--init']
+        cmd += ['--depth', '1'] if shallow else []
+        cmd += ['--force'] if force else []
+        cmd += ['--recursive'] if recursive else []
+        cmd += ['--jobs', f'{jobs}'] if jobs else []
+        module_paths = [module.path for module in modules]
+
+        subprocess.check_call(cmd + module_paths)
+
+        if recursive:
+            # We've recursively checkouted all submodules.
+            pass
+        else:
+            # We've checkouted all top-level submodules.
+            # We're going to recursively checkout submodules whose recursive configuration is true.
+            cmd += ['--recursive']
+            module_paths = [module.path for module in modules if module.recursive]
+
+            if module_paths:
+                subprocess.check_call(cmd + module_paths)
+    finally:
+        if backup_path:
+            restore_gitmodules(backup_path)
 
 
 def deinit_modules(modules: list, force: bool) -> None:
@@ -153,6 +206,8 @@ def main():
                         help='Recursive init of the listed submodules')
     parser.add_argument('--jobs', type=int, metavar='N',
                         help='Clone new submodules in parallel with N jobs')
+    parser.add_argument('--token', type=str, default=None,
+                        help='Personal Access Token for accessing private submodules')
     args = parser.parse_args()
 
     modules = list(load_module_info())
@@ -165,7 +220,7 @@ def main():
     if args.allow_changing_global_git_config:
         make_chip_root_safe_directory()  # ignore directory ownership issues for sub-modules
     checkout_modules(selected_modules, args.shallow,
-                     args.force, args.recursive, args.jobs)
+                     args.force, args.recursive, args.jobs, args.token)
 
     if args.deinit_unmatched and unmatched_modules:
         deinit_modules(unmatched_modules, args.force)

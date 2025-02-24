@@ -52,6 +52,7 @@ jobs:
         uses: ./.github/actions/checkout-submodules-and-bootstrap
         with:
           platform: telink
+          token: ${{ secrets.MY_MATTER_TOKEN }}
 
       - name: Set up environment for size reports
         uses: ./.github/actions/setup-size-reports
@@ -63,8 +64,9 @@ jobs:
         env:
           MATTER_TOKEN: ${{ secrets.MY_MATTER_TOKEN }}
         run: |
-          echo "MATTER_TOKEN is: $MATTER_TOKEN"
-          curl -H "Authorization: token $MATTER_TOKEN" https://api.github.com/user
+          echo "Verifying GitHub access permissions using provided GitHub token..."
+          curl -s -H "Authorization: token $MATTER_TOKEN" https://api.github.com/user
+          echo "Running update_zephyr script in Matter build environment..."
           scripts/run_in_build_env.sh \
             "pip3 install requests &&  pip3 install pyyaml && python3 \
             scripts/tools/telink/update_zephyr.py \
