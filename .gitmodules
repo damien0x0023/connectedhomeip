@@ -333,3 +333,7 @@
 	path = third_party/infineon/psoc6/psoc6_sdk/libs/lwip-network-interface-integration
 	url = https://github.com/Infineon/lwip-network-interface-integration.git
 	platforms = infineon
+[submodule "third_party/dummy_CBB"]
+	path = third_party/dummy_CBB
+	url = https://github.com/damien0x0023/dummy_CBB.git
+	platforms = telink
