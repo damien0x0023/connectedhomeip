@@ -19,6 +19,7 @@ on:
         branches:
             - master
             - 'v*-branch'
+            - master_thread_optimization
     pull_request:
     merge_group:
 
