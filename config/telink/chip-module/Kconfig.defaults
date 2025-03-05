@@ -34,7 +34,7 @@ choice LOG_MODE
 endchoice
 
 choice MATTER_LOG_LEVEL_CHOICE
-    default MATTER_LOG_LEVEL_WRN if SOC_RISCV_TELINK_TL321X
+    default MATTER_LOG_LEVEL_DBG if SOC_RISCV_TELINK_TL321X
     default MATTER_LOG_LEVEL_DBG
 endchoice
 
@@ -84,7 +84,7 @@ config HEAP_MEM_POOL_SIZE
 
 config COMMON_LIBC_MALLOC_ARENA_SIZE
     default 20716 if SOC_RISCV_TELINK_TL321X || SOC_SERIES_RISCV_TELINK_B9X_RETENTION
-    default 16384 if SOC_RISCV_TELINK_TL721X
+    default 20716 if SOC_RISCV_TELINK_TL721X
     default 12288
 
 config NET_IPV6_MLD
@@ -298,6 +298,19 @@ endchoice
 
 config CHIP_ENABLE_ICD_SUPPORT
     default y if CHIP_THREAD_DEVICE_ROLE_SLEEPY_END_DEVICE
+
+config OPENTHREAD_CSMABACKOFF_OPTIMIZATION
+	bool "Skip the first backoff during sending data request"
+	depends on CHIP_ENABLE_ICD_SUPPORT
+	default y if SOC_SERIES_RISCV_TELINK_TLX_RETENTION || SOC_SERIES_RISCV_TELINK_B9X_RETENTION
+	default n
+
+config IEEE802154_TLX_OPTIMIZATION
+	bool "optimize the rf performance for tlx"
+	default y if SOC_SERIES_RISCV_TELINK_TLX_RETENTION
+	default n
+	help
+	  optimize the rf performance for tlx.
 
 config OPENTHREAD_THREAD_STACK_SIZE
     default 2400 if PM || SOC_RISCV_TELINK_TL321X
