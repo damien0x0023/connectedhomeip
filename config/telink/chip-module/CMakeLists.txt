@@ -185,12 +185,14 @@ if (CONFIG_BOOTLOADER_MCUBOOT)
             COMMAND
             dd if=${ZEPHYR_BASE}/concurrent_sampleLight_b92.bin of=${PROJECT_BINARY_DIR}/dm_merged.bin bs=${BLOCK_SIZE} seek=1280 conv=notrunc
             COMMAND
+            cp ${PROJECT_BINARY_DIR}/zephyr.bin ${PROJECT_BINARY_DIR}/zephyr.matter.bin
+            COMMAND
             cp ${PROJECT_BINARY_DIR}/dm_merged.bin ${PROJECT_BINARY_DIR}/zephyr.bin
         )
-        add_custom_target(west_sign ALL
+        # add_custom_target(west_sign ALL
             # COMMAND
             # west sign -t imgtool -p ${ZEPHYR_BASE}/../bootloader/mcuboot/scripts/imgtool.py -d ${PROJECT_BINARY_DIR}/.. -- --key ${ZEPHYR_BASE}/../bootloader/mcuboot/root-rsa-2048.pem
-        )
+        # )
     else()
         message(WARNING "File ${ZB_FILE_PATH} does not exist. merge_zigbee target will not be created.")
     endif()
@@ -204,7 +206,7 @@ if (CONFIG_BOOTLOADER_MCUBOOT)
 
     if(EXISTS ${ZB_FILE_PATH})
         add_dependencies(merge_zigbee ${ZEPHYR_FINAL_EXECUTABLE})
-        add_dependencies(west_sign merge_zigbee)
+        # add_dependencies(west_sign merge_zigbee)
         # add_dependencies(merge_mcuboot west_sign)
     else()
         # add_dependencies(merge_mcuboot ${ZEPHYR_FINAL_EXECUTABLE})

@@ -73,6 +73,34 @@ jobs:
             986ee2181c62c03f19dbe7a60bd0fa34a8173275 \
             https://github.com/damien0x0023/zephyr_private \
             --token $MATTER_TOKEN"
+      - name: Download artifacts from another workflow
+        env:
+          CLASSIC_TOKEN: ${{ secrets.MY_CLASSIC_TOKEN }}
+        run: |
+          ARTIFACT_ID=2770118691
+          curl -L -o artifact.zip \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer $CLASSIC_TOKEN" \
+          https://api.github.com/repos/damien0x0023/telink_zigbee_ble_concurrent_sdk/actions/artifacts/$ARTIFACT_ID/zip
+
+      - name: Debug downloaded file
+        run: |
+          file artifact.zip
+          ls -lh artifact.zip
+
+      - name: Unzip artifacts
+        run: unzip artifact.zip -d ./artifact-content
+
+      - name: List unzipped files
+        run: ls -R ./artifact-content
+
+      - name: Move desired file to ZEPHYR_BASE
+        run: |
+          mv ./artifact-content/concurrent_sampleLight_b92.bin /opt/telink/zephyrproject/zephyr/
+
+      - name: Verify file
+        run: |
+          ls -l /opt/telink/zephyrproject/zephyr/concurrent_sampleLight_b92.bin
 
       - name: Build example Telink (B92) Lighting App with OTA and 4Mb flash
         run: |
