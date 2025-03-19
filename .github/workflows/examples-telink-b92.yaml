@@ -17,7 +17,7 @@ name: Build example - Telink
 on:
   push:
     branches:
-      - dual_mode_develop_ci_private
+      - disable_hash
   pull_request:
     branches-ignore:
             - 'dependabot/**'
