@@ -51,15 +51,15 @@ void GetFactoryData(uint8_t * buf, const void * const data, const size_t len)
     assert(ret == 0);
 }
 
-void GetDACData(uint8_t * buf, const void * const data, const size_t len)
-{
-    assert(data != nullptr);
-    uint32_t offset = (uint32_t) ((uint8_t *) data - (uint8_t *) chip::DeviceLayer::mDACDataBuffer);
+// void GetDACData(uint8_t * buf, const void * const data, const size_t len)
+// {
+//     assert(data != nullptr);
+//     uint32_t offset = (uint32_t) ((uint8_t *) data - (uint8_t *) chip::DeviceLayer::mDACDataBuffer);
 
-    const struct device * mFlashDevice = DEVICE_DT_GET(DT_CHOSEN(zephyr_flash_controller));
-    int ret                            = flash_read(mFlashDevice, FIXED_PARTITION_OFFSET(dac_keypair_partition) + offset, buf, len);
-    assert(ret == 0);
-}
+//     const struct device * mFlashDevice = DEVICE_DT_GET(DT_CHOSEN(zephyr_flash_controller));
+//     int ret                            = flash_read(mFlashDevice, FIXED_PARTITION_OFFSET(dac_keypair_partition) + offset, buf, len);
+//     assert(ret == 0);
+// }
 
 CHIP_ERROR GetFactoryDataString(const FactoryDataString & str, char * buf, size_t bufSize)
 {
@@ -120,16 +120,25 @@ CHIP_ERROR FactoryDataProvider<FlashFactoryData>::Init()
         return error;
     }
 
-#if CHIP_DEVICE_SECURE_PROGRAMMING
-    error = mFlashFactoryData.GetDACDataPartition(dacData, dacDataSize);
+// #if CHIP_DEVICE_SECURE_PROGRAMMING
+//     uint8_t * dac_ptr = nullptr;
+//     dac_ptr = (uint8_t *) malloc(sizeof(uint8_t) * FIXED_PARTITION_SIZE(dac_keypair_partition));
+//     if (dac_ptr == nullptr)
+//     {
+//         ChipLogError(DeviceLayer, "Failed to malloc the mDACDataBuffer");
+//         free(dac_ptr); // Only free on failure
+//         return CHIP_ERROR_NO_MEMORY;
+//     }
+//     mDACDataBuffer = dac_ptr;
+//     error = mFlashFactoryData.GetDACDataPartition(dacData, dacDataSize);
 
-    if (error != CHIP_NO_ERROR)
-    {
-        ChipLogError(DeviceLayer, "Failed to read DAC data partition");
-        free(ptr); // Only free on failure
-        return error;
-    }
-#endif
+//     if (error != CHIP_NO_ERROR)
+//     {
+//         ChipLogError(DeviceLayer, "Failed to read DAC data partition");
+//         free(dac_ptr); // Only free on failure
+//         return error;
+//     }
+// #endif
 
 #if CHIP_DEVICE_SECURE_PROGRAMMING
     if (!ParseFactoryData(factoryData + kFactoryDataOffset, factoryDataSize - kFactoryDataOffset, &mFactoryData))
@@ -149,7 +158,7 @@ CHIP_ERROR FactoryDataProvider<FlashFactoryData>::Init()
     LOG_HEXDUMP_INF(mFactoryData.dac_cert.data, mFactoryData.dac_cert.len, "DAC CERT");
 
 #if CHIP_DEVICE_SECURE_PROGRAMMING
-    if (!LoadDACCertAndKey(dacData, &mFactoryData))
+    if (!LoadDACCertAndKey(&mFactoryData))
     {
         ChipLogError(DeviceLayer, "Failed to inject dac data");
         free(ptr); // Only free on failure
@@ -165,6 +174,7 @@ CHIP_ERROR FactoryDataProvider<FlashFactoryData>::Init()
 
     // Release the memory of mFactoryDataBuffer after complete parse
     free(ptr);
+    // free(dac_ptr);
 
     // Check if factory data version is correct
     if (mFactoryData.version != CONFIG_CHIP_FACTORY_DATA_VERSION)
@@ -210,7 +220,8 @@ CHIP_ERROR FactoryDataProvider<FlashFactoryData>::GetDeviceAttestationCert(Mutab
     VerifyOrReturnError(mFactoryData.dac_cert.data, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
 
 #if CHIP_DEVICE_SECURE_PROGRAMMING
-    GetDACData(outBuffer.data(), mFactoryData.dac_cert.data, mFactoryData.dac_cert.len);
+    // GetDACData(outBuffer.data(), mFactoryData.dac_cert.data, mFactoryData.dac_cert.len);
+    memcpy(outBuffer.data(), mFactoryData.dac_cert.data, mFactoryData.dac_cert.len);
 #else
     GetFactoryData(outBuffer.data(), mFactoryData.dac_cert.data, mFactoryData.dac_cert.len);
 #endif
@@ -256,7 +267,8 @@ CHIP_ERROR FactoryDataProvider<FlashFactoryData>::SignWithDeviceAttestationKey(c
     }
 
 #if CHIP_DEVICE_SECURE_PROGRAMMING
-    GetDACData(P_DACCert, mFactoryData.dac_cert.data, mFactoryData.dac_cert.len);
+    // GetDACData(P_DACCert, mFactoryData.dac_cert.data, mFactoryData.dac_cert.len);
+    memcpy(P_DACCert, mFactoryData.dac_cert.data, mFactoryData.dac_cert.len);
 #else
     GetFactoryData(P_DACCert, mFactoryData.dac_cert.data, mFactoryData.dac_cert.len);
 #endif

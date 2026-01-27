@@ -205,49 +205,176 @@ bool ParseFactoryData(uint8_t * buffer, uint16_t bufferSize, struct FactoryData 
 #include "aes.h"
 #endif
 
-bool LoadDACCertAndKey(uint8_t * buffer, struct FactoryData * factoryData)
+#include <zephyr/drivers/flash.h>
+#include <zephyr/storage/flash_map.h>
+#include <stdlib.h>
+
+bool LoadDACCertAndKey(struct FactoryData * factoryData)
 {
-    size_t dac_priv_key_len;
-    uint8_t chip_id[16] = { 0 };
-    dac_priv_key_len    = buffer[0];
-    dac_priv_key_len |= (uint16_t) buffer[1] << 8;
-    factoryData->dac_priv_key.len = dac_priv_key_len;
-    if (!factoryData->dac_priv_key.len)
+    uint8_t header_buffer[102];
+    off_t dac_offset = FIXED_PARTITION_OFFSET(dac_keypair_partition);
+
+    const struct device * mFlashDevice = DEVICE_DT_GET(DT_CHOSEN(zephyr_flash_controller));
+    int ret = flash_read(mFlashDevice, dac_offset, header_buffer, sizeof(header_buffer));
+    if (ret != 0) 
     {
-        return false;
-    }
-    if (efuse_get_chip_id(chip_id) == DRV_API_SUCCESS)
-    {
-#if CONFIG_SOC_RISCV_TELINK_TL323X
-        ske_dig_en();
-        aes_decryption_be(chip_id, buffer + 2, dac_key_decrypt);
-        aes_decryption_be(chip_id, buffer + 18, dac_key_decrypt + 16);
-#else
-        aes_decrypt(chip_id, buffer + 2, dac_key_decrypt);
-        aes_decrypt(chip_id, buffer + 18, dac_key_decrypt + 16);
-#endif
-        // LOG_INF("[LoadDACCertAndKey]DAC priv key decrypted, len=%u", dac_priv_key_len);
-        // LOG_HEXDUMP_INF(dac_key_decrypt, dac_priv_key_len, "DAC PRIV KEY");
-        factoryData->dac_priv_key.data = dac_key_decrypt;
-    }
-    else
-    {
-        LOG_ERR("Private key decryption failed.");
+        LOG_ERR("Failed to read DAC header from flash");
         return false;
     }
 
-    size_t dac_cert_len;
-    dac_cert_len = buffer[100];
-    dac_cert_len |= (uint16_t) buffer[101] << 8;
-    factoryData->dac_cert.len = dac_cert_len;
-    if (!factoryData->dac_cert.len)
+    size_t dac_priv_key_len = header_buffer[0] | (header_buffer[1] << 8);
+    if (dac_priv_key_len == 0 || dac_priv_key_len > 32) 
     {
+        LOG_ERR("Invalid DAC private key length: %u", dac_priv_key_len);
         return false;
     }
-    factoryData->dac_cert.data = buffer + 102;
-    // LOG_INF("[LoadDACCertAndKey]DAC cert len=%u", dac_cert_len);
-    // LOG_HEXDUMP_INF(factoryData->dac_cert.data, factoryData->dac_cert.len, "DAC CERT");
+    factoryData->dac_priv_key.len = dac_priv_key_len;
+
+    // uint8_t *dac_key_decrypt = (uint8_t *)malloc(dac_priv_key_len);
+    // if (dac_key_decrypt == NULL) 
+    // {
+    //     LOG_ERR("Failed to allocate memory for decrypted key");
+    //     return false;
+    // }
+
+    uint8_t ieee_addr[8] = {0};
+    efuse_get_ieee_addr(ieee_addr);
+    LOG_HEXDUMP_INF(ieee_addr, 8, "IEEE address");
+
+    uint8_t chip_id[16] = {0};
+    memcpy(chip_id, ieee_addr, 8);
+    LOG_HEXDUMP_INF(chip_id, 16, "chip_id with IEEE address and zero padding");
+
+    bool ieee_addr_valid = false;
+    for (int i = 0; i < 8; i++) {
+        if (ieee_addr[i] != 0) {
+            ieee_addr_valid = true;
+            break;
+        }
+    }
+
+    if (!ieee_addr_valid) {
+        LOG_ERR("Failed to get valid IEEE address");
+        // free(dac_key_decrypt);
+        return false;
+    }
+
+    // uint8_t chip_id[16] = {0};
+    // if (efuse_get_chip_id(chip_id) != DRV_API_SUCCESS)
+    // {
+    //     LOG_ERR("Failed to get chip ID");
+    //     free(dac_key_decrypt);
+    //     return false;
+    // }
+    // LOG_HEXDUMP_INF(chip_id, 16, "chip_id");
+
+    uint8_t *encrypted_key = header_buffer + 2;
+    LOG_HEXDUMP_INF(encrypted_key, dac_priv_key_len, "DAC PRIV KEY - encrypted_key");
+
+#if CONFIG_SOC_RISCV_TELINK_TL323X
+    ske_dig_en();
+    aes_decryption_be(chip_id, encrypted_key, dac_key_decrypt);
+    if (dac_priv_key_len > 16)
+    {
+        aes_decryption_be(chip_id, encrypted_key + 16, dac_key_decrypt + 16);
+    }
+#else
+    aes_decrypt(chip_id, encrypted_key, dac_key_decrypt);
+    if (dac_priv_key_len > 16)
+    {
+        aes_decrypt(chip_id, encrypted_key + 16, dac_key_decrypt + 16);
+    }
+#endif
+
+    factoryData->dac_priv_key.data = dac_key_decrypt;
+    LOG_INF("[LoadDACCertAndKey]DAC priv key decrypted, len=%u", dac_priv_key_len);
+    LOG_HEXDUMP_INF(factoryData->dac_priv_key.data, dac_priv_key_len, "DAC PRIV KEY - factoryData->dac_priv_key.data");
+    LOG_INF("DAC private key decrypted successfully, len=%u", dac_priv_key_len);
+
+    size_t dac_cert_len = header_buffer[100] | (header_buffer[101] << 8);
+    if (dac_cert_len == 0) 
+    {
+        LOG_ERR("Invalid DAC certificate length: 0");
+        // free(dac_key_decrypt);
+        factoryData->dac_priv_key.data = NULL;
+        return false;
+    }
+
+    factoryData->dac_cert.len = dac_cert_len;
+
+    uint8_t *dac_cert_buf = (uint8_t *)malloc(dac_cert_len);
+    if (dac_cert_buf == NULL)
+    {
+        LOG_ERR("Failed to allocate memory for DAC certificate");
+        // free(dac_key_decrypt);
+        factoryData->dac_priv_key.data = NULL;
+        return false;
+    }
+
+    ret = flash_read(mFlashDevice, dac_offset + 102, dac_cert_buf, dac_cert_len);
+    if (ret != 0)
+    {
+        LOG_ERR("Failed to read DAC certificate from flash");
+        // free(dac_key_decrypt);
+        free(dac_cert_buf);
+        factoryData->dac_priv_key.data = NULL;
+        return false;
+    }
+
+    LOG_INF("[LoadDACCertAndKey]DAC cert len=%u", dac_cert_len);
+    factoryData->dac_cert.data = dac_cert_buf;
+    // uint8_t *flash_dac_cert_ptr = (uint8_t *)(dac_offset + 102);
+    // factoryData->dac_cert.data = flash_dac_cert_ptr;
+    LOG_HEXDUMP_INF(factoryData->dac_cert.data, factoryData->dac_cert.len, "DAC CERT - factoryData->dac_cert.data");
+
+    // free(dac_cert_buf);
 
     return true;
 }
+
+// bool LoadDACCertAndKey(uint8_t * buffer, struct FactoryData * factoryData)
+// {
+//     size_t dac_priv_key_len;
+//     uint8_t chip_id[16] = { 0 };
+//     dac_priv_key_len    = buffer[0];
+//     dac_priv_key_len |= (uint16_t) buffer[1] << 8;
+//     factoryData->dac_priv_key.len = dac_priv_key_len;
+//     if (!factoryData->dac_priv_key.len)
+//     {
+//         return false;
+//     }
+//     if (efuse_get_chip_id(chip_id) == DRV_API_SUCCESS)
+//     {
+// #if CONFIG_SOC_RISCV_TELINK_TL323X
+//         ske_dig_en();
+//         aes_decryption_be(chip_id, buffer + 2, dac_key_decrypt);
+//         aes_decryption_be(chip_id, buffer + 18, dac_key_decrypt + 16);
+// #else
+//         aes_decrypt(chip_id, buffer + 2, dac_key_decrypt);
+//         aes_decrypt(chip_id, buffer + 18, dac_key_decrypt + 16);
+// #endif
+//         // LOG_INF("[LoadDACCertAndKey]DAC priv key decrypted, len=%u", dac_priv_key_len);
+//         // LOG_HEXDUMP_INF(dac_key_decrypt, dac_priv_key_len, "DAC PRIV KEY");
+//         factoryData->dac_priv_key.data = dac_key_decrypt;
+//     }
+//     else
+//     {
+//         LOG_ERR("Private key decryption failed.");
+//         return false;
+//     }
+
+//     size_t dac_cert_len;
+//     dac_cert_len = buffer[100];
+//     dac_cert_len |= (uint16_t) buffer[101] << 8;
+//     factoryData->dac_cert.len = dac_cert_len;
+//     if (!factoryData->dac_cert.len)
+//     {
+//         return false;
+//     }
+//     factoryData->dac_cert.data = buffer + 102;
+//     // LOG_INF("[LoadDACCertAndKey]DAC cert len=%u", dac_cert_len);
+//     // LOG_HEXDUMP_INF(factoryData->dac_cert.data, factoryData->dac_cert.len, "DAC CERT");
+
+//     return true;
+// }
 #endif

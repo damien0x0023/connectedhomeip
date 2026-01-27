@@ -30,9 +30,9 @@
 namespace chip {
 namespace DeviceLayer {
 
-#if CHIP_DEVICE_SECURE_PROGRAMMING
-static uint8_t mDACDataBuffer[FIXED_PARTITION_SIZE(dac_keypair_partition)];
-#endif
+// #if CHIP_DEVICE_SECURE_PROGRAMMING
+// static uint8_t * mDACDataBuffer = nullptr;
+// #endif
 static uint8_t * mFactoryDataBuffer = nullptr;
 
 struct InternalFlashFactoryData
@@ -43,6 +43,15 @@ struct InternalFlashFactoryData
         dataSize = FIXED_PARTITION_SIZE(factory_partition);
         return CHIP_NO_ERROR;
     }
+
+#if CHIP_DEVICE_SECURE_PROGRAMMING
+    CHIP_ERROR GetDACDataPartition(uint8_t *& data, size_t & dataSize)
+    {
+        data     = reinterpret_cast<uint8_t *>(FIXED_PARTITION_OFFSET(dac_keypair_partition));
+        dataSize = FIXED_PARTITION_SIZE(dac_keypair_partition);
+        return CHIP_NO_ERROR;
+    }
+#endif
 
     CHIP_ERROR ProtectFactoryDataPartitionAgainstWrite() { return CHIP_ERROR_NOT_IMPLEMENTED; }
 };
@@ -71,23 +80,29 @@ struct ExternalFlashFactoryData
         return CHIP_NO_ERROR;
     }
 
-#if CHIP_DEVICE_SECURE_PROGRAMMING
-    CHIP_ERROR GetDACDataPartition(uint8_t *& data, size_t & dataSize)
-    {
-        int ret = flash_read(mFlashDevice, FIXED_PARTITION_OFFSET(dac_keypair_partition), mDACDataBuffer,
-                             FIXED_PARTITION_SIZE(dac_keypair_partition));
+// #if CHIP_DEVICE_SECURE_PROGRAMMING
+//     CHIP_ERROR GetDACDataPartition(uint8_t *& data, size_t & dataSize)
+//     {
+//         if (mDACDataBuffer == nullptr)
+//         {
+//             ChipLogError(DeviceLayer, "mDACDataBuffer ptr is nullptr");
+//             return CHIP_ERROR_NO_MEMORY;
+//         }
 
-        if (ret != 0)
-        {
-            return CHIP_ERROR_READ_FAILED;
-        }
+//         int ret = flash_read(mFlashDevice, FIXED_PARTITION_OFFSET(dac_keypair_partition), mDACDataBuffer,
+//                              FIXED_PARTITION_SIZE(dac_keypair_partition));
 
-        data     = mDACDataBuffer;
-        dataSize = FIXED_PARTITION_SIZE(dac_keypair_partition);
+//         if (ret != 0)
+//         {
+//             return CHIP_ERROR_READ_FAILED;
+//         }
 
-        return CHIP_NO_ERROR;
-    }
-#endif
+//         data     = mDACDataBuffer;
+//         dataSize = FIXED_PARTITION_SIZE(dac_keypair_partition);
+
+//         return CHIP_NO_ERROR;
+//     }
+// #endif
 
     CHIP_ERROR ProtectFactoryDataPartitionAgainstWrite() { return CHIP_ERROR_NOT_IMPLEMENTED; }
 
