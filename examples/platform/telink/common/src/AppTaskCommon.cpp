@@ -290,6 +290,17 @@ void dual_mode_auto_switch(int32_t op)
 }
 #endif /* CONFIG_DUAL_MODE */
 
+#if defined(CONFIG_CHIP_ENABLE_POST_COMMISSIONING_BLE_ADVERTISING)
+void EnablePostCommissioningBle(intptr_t)
+{
+    CHIP_ERROR err = ConnectivityMgr().SetBLEAdvertisingEnabled(true);
+    if (err != CHIP_NO_ERROR)
+    {
+        ChipLogError(DeviceLayer, "Failed to enable post-commissioning BLE advertising: %" CHIP_ERROR_FORMAT, err.Format());
+    }
+}
+#endif
+
 #if APP_SET_DEVICE_INFO_PROVIDER
 chip::DeviceLayer::DeviceInfoProviderImpl gExampleDeviceInfoProvider;
 #endif
@@ -585,6 +596,13 @@ CHIP_ERROR AppTaskCommon::InitCommonParts(void)
     app::SetAttributePersistenceProvider(&gDeferredAttributePersister);
 #endif
 
+#if defined(CONFIG_CHIP_ENABLE_POST_COMMISSIONING_BLE_ADVERTISING)
+    if (chip::Server::GetInstance().GetFabricTable().FabricCount() != 0)
+    {
+        LogErrorOnFailure(PlatformMgr().ScheduleWork(EnablePostCommissioningBle, 0));
+    }
+#endif
+
     ConfigurationMgr().LogDeviceConfig();
     PrintOnboardingCodes(chip::RendezvousInformationFlags(chip::RendezvousInformationFlag::kBLE));
 
@@ -835,7 +853,7 @@ void AppTaskCommon::StartBleAdvHandler(AppEvent * aEvent)
 
     if (sIsNetworkProvisioned)
     {
-#if defined(CONFIG_CHIP_CONCURRENT_MODE) && defined(CONFIG_CHIP_CONCURRENT_BLE_IDLE)
+#if defined(CONFIG_CHIP_ENABLE_CONCURRENT_CONNECTION)
         // Concurrent idle mode: toggle BLE advertising on demand so that
         // BLE (e.g. Channel Sounding) becomes accessible on button press.
         if (ConnectivityMgr().IsBLEAdvertisingEnabled())
@@ -1153,6 +1171,9 @@ void AppTaskCommon::ChipEventHandler(const ChipDeviceEvent * event, intptr_t /* 
         dual_mode_auto_switch(OPCODE_MATTER_PAIRED);
 #endif
         printk("Commissioning complete; Matter commissioned flag set.\n");
+#if defined(CONFIG_CHIP_ENABLE_POST_COMMISSIONING_BLE_ADVERTISING)
+        LogErrorOnFailure(PlatformMgr().ScheduleWork(EnablePostCommissioningBle, 0));
+#endif
         break;
 
     case DeviceEventType::kFailSafeTimerExpired:
