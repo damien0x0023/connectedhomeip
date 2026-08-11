@@ -245,9 +245,25 @@ CHIP_ERROR BLEManagerImpl::_Init()
     err = bt_enable(nullptr);
     VerifyOrReturnError(err == 0, MapErrorZephyr(err));
 #if defined(CONFIG_BT_TLX)
-    // Telink TLX: enable BLE + 802.15.4 hardware coexistence so that
-    // OpenThread's tlx_start_radio() does not block on
-    // ieee802154_task_ready_sem. Must be called after bt_enable().
+    // Telink TLX: start a minimal BLE advertisement so that
+    // tlx_bt_802154_dual_mode_start() can insert the BLE task
+    // before Thread auto-starts. Without a running advertisement
+    // the BLE scheduler is not active and the coexistence hardware
+    // initialisation is incomplete, causing Thread TX to fail.
+    // The real CHIPoBLE advertisement replaces this later.
+    {
+        static const struct bt_data minimal_ad[] = {
+            BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR),
+        };
+        const struct bt_le_adv_param params =
+            BT_LE_ADV_PARAM_INIT(BT_LE_ADV_OPT_CONN, BT_GAP_ADV_FAST_INT_MIN_1, BT_GAP_ADV_FAST_INT_MAX_1, NULL);
+        int adv_err = bt_le_adv_start(&params, minimal_ad, ARRAY_SIZE(minimal_ad), NULL, 0);
+        if (adv_err != 0)
+        {
+            ChipLogError(DeviceLayer, "Failed to start minimal BLE advertisement: %d", adv_err);
+        }
+    }
+
     tlx_bt_802154_dual_mode_start();
 #endif
 #endif
