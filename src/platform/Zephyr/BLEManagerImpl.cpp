@@ -365,8 +365,8 @@ void BLEManagerImpl::DriveBLEState()
             }
         }
 
-#if defined(CONFIG_BT_TLX) && defined(CONFIG_CHIP_ENABLE_CONCURRENT_CONNECTION) &&                                                 \
-    !defined(CONFIG_CHIP_ENABLE_POST_COMMISSIONING_BLE_ADVERTISING)
+#if defined(CONFIG_BT_TLX) && CHIP_DEVICE_CONFIG_SUPPORTS_CONCURRENT_CONNECTION &&                                                 \
+    !CHIP_DEVICE_CONFIG_ENABLE_POST_COMMISSIONING_BLE_ADVERTISING
         // Telink TLX: stop the minimal advertisement once Thread is attached.
         if (ConnectivityMgr().IsThreadAttached())
         {
@@ -703,8 +703,8 @@ exit:
     // Unref bt_conn before scheduling DriveBLEState.
     bt_conn_unref(connEvent->BtConn);
 
-#if defined(CONFIG_BT_TLX) && defined(CONFIG_CHIP_ENABLE_CONCURRENT_CONNECTION) &&                                                 \
-    !defined(CONFIG_CHIP_ENABLE_POST_COMMISSIONING_BLE_ADVERTISING)
+#if defined(CONFIG_BT_TLX) && CHIP_DEVICE_CONFIG_SUPPORTS_CONCURRENT_CONNECTION &&                                                 \
+    !CHIP_DEVICE_CONFIG_ENABLE_POST_COMMISSIONING_BLE_ADVERTISING
     // Telink TLX: keep BLE idle after disconnect (bt_conn_unref() may resume advertising).
     if (!mFlags.Has(Flags::kAdvertisingEnabled))
     {
