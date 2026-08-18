@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Project CHIP Authors
+# Copyright (c) 2022 Project CHIP Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: Build example - Linux Standalone
+name: Build example - i.MX Linux
 
 on:
     push:
@@ -27,74 +27,75 @@ concurrency:
     cancel-in-progress: true
 
 env:
-    CHIP_LOG_TIMESTAMPS: false
-    CHIP_PW_COMMAND_LAUNCHER: ccache
+    CHIP_NO_LOG_TIMESTAMPS: true
 
 jobs:
-    linux_standalone:
-        name: Linux Standalone
+    imx:
+        name: Linux i.MX Build
 
         runs-on: ubuntu-latest
         if: github.actor != 'restyled-io[bot]'
 
         container:
-            image: ghcr.io/project-chip/chip-build:200
+            image: ghcr.io/project-chip/chip-build-imx:181
 
         steps:
             - name: Checkout
+<<<<<<< HEAD:.github/workflows/examples-linux-imx.yaml
               uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+=======
+              uses: actions/checkout@v6
+>>>>>>> 1e23c579daf (telink: disable non-Telink CI workflows):.github/workflows/examples-linux-imx.yaml.disabled
             - name: Checkout submodules & Bootstrap
               uses: ./.github/actions/checkout-submodules-and-bootstrap
               with:
                 platform: linux
 
-            - name: Build Standalone cert tool
+            - name: Build lighting-app
               run: |
                   ./scripts/run_in_build_env.sh \
                      "./scripts/build/build_examples.py \
-                        --target linux-x64-chip-cert \
-                        build" && rm -rf out
-            - name: Build minmdns example with platform dns
+                        --target imx-lighting-app \
+                        build"
+            - name: Clean out build output
+              run: rm -rf ./out
+            - name: Build chip-tool
               run: |
                   ./scripts/run_in_build_env.sh \
                      "./scripts/build/build_examples.py \
-                        --target linux-x64-address-resolve-tool-platform-mdns-ipv6only \
-                        build" && rm -rf out
-            - name: Build example Standalone Shell
+                        --target imx-chip-tool \
+                        build"
+            - name: Clean out build output
+              run: rm -rf ./out
+            - name: Build thermostat
               run: |
                   ./scripts/run_in_build_env.sh \
                      "./scripts/build/build_examples.py \
-                        --target linux-x64-shell \
-                        build" && rm -rf out
-            - name: Build example Standalone All Clusters Minimal Server
+                        --target imx-thermostat \
+                        build"
+            - name: Clean out build output
+              run: rm -rf ./out
+            - name: Build all-cluster
               run: |
                   ./scripts/run_in_build_env.sh \
                      "./scripts/build/build_examples.py \
-                        --target linux-x64-all-clusters-minimal \
-                        build" && rm -rf out
-            - name: Build example Standalone TV Casting App
+                        --target imx-all-clusters-app \
+                        build"
+            - name: Clean out build output
+              run: rm -rf ./out
+            - name: Build all-cluster-minimal
               run: |
                   ./scripts/run_in_build_env.sh \
                      "./scripts/build/build_examples.py \
-                        --target linux-x64-tv-casting-app \
-                        build" && rm -rf out
-            - name: Build example lighting app with RPCs and UI
+                        --target imx-all-clusters-minimal-app \
+                        build"
+            - name: Clean out build output
+              run: rm -rf ./out
+            - name: Build ota-provider-app
               run: |
                   ./scripts/run_in_build_env.sh \
                      "./scripts/build/build_examples.py \
-                        --target linux-x64-light-rpc-with-ui \
-                        build" && rm -rf out
-            - name: Build example contact sensor with UI
-              run: |
-                  ./scripts/run_in_build_env.sh \
-                     "./scripts/build/build_examples.py \
-                        --target linux-x64-contact-sensor-no-ble-with-ui \
-                        build" && rm -rf out
-
-            - name: CCache statistics
-              run: ccache --show-stats
-            - name: Notify Slack on Failure
-              if: failure()
-              uses: ./.github/actions/notify-slack-failure
-              with:
-                slack-webhook: ${{ secrets.SWTT_SLACK_WEBHOOK }}
+                        --target imx-ota-provider-app \
+                        build"
+            - name: Clean out build output
+              run: rm -rf ./out

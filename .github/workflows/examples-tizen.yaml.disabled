@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: Build example - Ameba
+name: Build example - Tizen
 
 on:
     push:
@@ -27,39 +27,39 @@ concurrency:
     cancel-in-progress: true
 
 env:
-    CHIP_LOG_TIMESTAMPS: false
+    CHIP_NO_LOG_TIMESTAMPS: true
 
 jobs:
-    ameba:
-        name: Ameba
-        env:
-            BUILD_TYPE: ameba
+    tizen:
+        name: Tizen
 
         runs-on: ubuntu-latest
         if: github.actor != 'restyled-io[bot]'
 
         container:
-            image: ghcr.io/project-chip/chip-build-ameba:200
+            image: ghcr.io/project-chip/chip-build-tizen:181
             options: --user root
 
         steps:
             - name: Checkout
+<<<<<<< HEAD:.github/workflows/examples-tizen.yaml
               uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+=======
+              uses: actions/checkout@v6
+>>>>>>> 1e23c579daf (telink: disable non-Telink CI workflows):.github/workflows/examples-tizen.yaml.disabled
             - name: Checkout submodules & Bootstrap
               uses: ./.github/actions/checkout-submodules-and-bootstrap
               with:
-                platform: ameba
-            - name: Build example Ameba Apps
+                platform: tizen
+
+            - name: Build Tizen examples
               run: |
                   ./scripts/run_in_build_env.sh \
-                     "./scripts/build/build_examples.py \
-                        --target ameba-amebad-all-clusters \
-                        --target ameba-amebad-all-clusters-minimal \
-                        --target ameba-amebad-light \
-                        build \
-                     "
-            - name: Notify Slack on Failure
-              if: failure()
-              uses: ./.github/actions/notify-slack-failure
-              with:
-                slack-webhook: ${{ secrets.SWTT_SLACK_WEBHOOK }}
+                      "./scripts/build/build_examples.py \
+                          --enable-flashbundle \
+                          --target tizen-arm-all-clusters \
+                          --target tizen-arm-chip-tool-ubsan \
+                          --target tizen-arm64-light-with-ui \
+                          build \
+                          --copy-artifacts-to out/artifacts \
+                      "
