@@ -29,7 +29,7 @@ concurrency:
         'workflow_dispatch' && github.run_number) || github.sha }}
     cancel-in-progress: true
 env:
-    CHIP_LOG_TIMESTAMPS: false
+    CHIP_NO_LOG_TIMESTAMPS: true
 
 jobs:
     cc13xx_26xx:
@@ -42,13 +42,17 @@ jobs:
         if: github.actor != 'restyled-io[bot]'
 
         container:
-            image: ghcr.io/project-chip/chip-build-ti:200
+            image: ghcr.io/project-chip/chip-build-ti:181
             volumes:
                 - "/:/runner-root-volume"
                 - "/tmp/bloat_reports:/tmp/bloat_reports"
         steps:
             - name: Checkout
+<<<<<<< HEAD:.github/workflows/examples-cc13xx_26xx.yaml
               uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+=======
+              uses: actions/checkout@v6
+>>>>>>> 1e23c579daf (telink: disable non-Telink CI workflows):.github/workflows/examples-cc13xx_26xx.yaml.disabled
             - name: Checkout submodules & Bootstrap
               uses: ./.github/actions/checkout-submodules-and-bootstrap
               with:
@@ -100,8 +104,3 @@ jobs:
               if: ${{ !env.ACT }}
               with:
                   platform-name: cc13x4_26x4
-            - name: Notify Slack on Failure
-              if: failure()
-              uses: ./.github/actions/notify-slack-failure
-              with:
-                slack-webhook: ${{ secrets.SWTT_SLACK_WEBHOOK }}
