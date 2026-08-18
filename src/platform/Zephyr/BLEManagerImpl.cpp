@@ -53,9 +53,9 @@
 #include <zephyr/version.h>
 #endif
 
-#ifdef CONFIG_BT_BONDABLE
+#if defined(CONFIG_BT_BONDABLE) || defined(CONFIG_BT_CHANNEL_SOUNDING)
 #include <zephyr/settings/settings.h>
-#endif // CONFIG_BT_BONDABLE
+#endif
 
 #if CHIP_DEVICE_LAYER_TARGET_NRFCONNECT
 #include <ncs_version.h>
@@ -70,6 +70,10 @@ extern __attribute__((noinline)) void tlx_bt_802154_dual_mode_start(void);
 extern __attribute__((noinline)) void telink_bt_blc_mac_init(uint8_t * bt_mac);
 #endif
 }
+#endif
+
+#if defined(CONFIG_BT_CHANNEL_SOUNDING) && CHIP_DEVICE_LAYER_TARGET_TELINK
+#include <platform/telink/CsReflector.h>
 #endif
 
 #include <array>
@@ -471,6 +475,16 @@ CHIP_ERROR BLEManagerImpl::RegisterGattService()
 
         VerifyOrReturnError(err == 0, MapErrorZephyr(err));
         mFlags.Set(Flags::kChipoBleGattServiceRegister);
+
+#if defined(CONFIG_BT_CHANNEL_SOUNDING) && CHIP_DEVICE_LAYER_TARGET_TELINK
+        // Register RAS GATT service for Channel Sounding (must be after settings load).
+        settings_load();
+        if (!mFlags.Has(Flags::kRasGattServiceRegistered))
+        {
+            CsReflector::Init();
+            mFlags.Set(Flags::kRasGattServiceRegistered);
+        }
+#endif
     }
     return CHIP_NO_ERROR;
 }
@@ -1049,6 +1063,10 @@ void BLEManagerImpl::HandleConnect(struct bt_conn * conId, uint8_t err)
 
     PlatformMgr().LockChipStack();
 
+#if defined(CONFIG_BT_CHANNEL_SOUNDING) && CHIP_DEVICE_LAYER_TARGET_TELINK
+    CsReflector::OnConnected(conId, err);
+#endif
+
     sInstance.mTotalConnNum++;
     ChipLogProgress(DeviceLayer, "Current number of connections: %u/%u", sInstance.mTotalConnNum, CONFIG_BT_MAX_CONN);
 
@@ -1074,6 +1092,10 @@ void BLEManagerImpl::HandleDisconnect(struct bt_conn * conId, uint8_t reason)
     bt_conn_info bt_info;
 
     PlatformMgr().LockChipStack();
+
+#if defined(CONFIG_BT_CHANNEL_SOUNDING) && CHIP_DEVICE_LAYER_TARGET_TELINK
+    CsReflector::OnDisconnected(conId);
+#endif
 
     if (sInstance.mTotalConnNum > 0)
     {
