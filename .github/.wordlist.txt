@@ -41,6 +41,7 @@ AFL
 AIDL
 algs
 aliased
+Aliro
 alloc
 allocator
 allocators
