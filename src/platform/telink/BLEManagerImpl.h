@@ -207,6 +207,10 @@ public:
      * down yet or the resume failed. Must run in application task context
      * (blocking). Port of the ot_ble_pm sample ble_enable(). */
     bool ResumeBleAfterTeardown(void);
+    /* Re-arm the post-commissioning teardown after BLE was resumed and is no
+     * longer needed. The teardown runs once advertising is off and no BLE
+     * connection is active. */
+    void RearmBleTeardown(void);
 #endif
 
 #if CHIP_DEVICE_EXPOSE_CHIP_ID_VIA_BLE
