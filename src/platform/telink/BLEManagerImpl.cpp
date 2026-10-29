@@ -56,9 +56,7 @@
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/util.h>
 #if defined(CONFIG_CHIP_CONCURRENT_BLE_OFF_AFTER_COMMISSIONING)
-#include <openthread/thread.h>
 #include <zephyr/kernel.h>
-#include <zephyr/net/openthread.h>
 #endif
 
 extern "C" {
@@ -348,17 +346,8 @@ void BLEManagerImpl::HandleConcurrentModeReAdv(intptr_t arg)
 #if defined(CONFIG_CHIP_CONCURRENT_MODE) && defined(CONFIG_CHIP_CONCURRENT_BLE_OFF_AFTER_COMMISSIONING)
 void BLEManagerImpl::HandleBleTeardownWork(struct k_work * work)
 {
-    /* Thread must be attached before the RF handover; retry until it is. */
-    otDeviceRole role = otThreadGetDeviceRole(openthread_get_default_instance());
-    if (role == OT_DEVICE_ROLE_DISABLED || role == OT_DEVICE_ROLE_DETACHED)
-    {
-        ChipLogDetail(DeviceLayer, "BLE teardown: Thread not attached yet, retry in 5s");
-        TEMPORARY_RETURN_IGNORED k_work_reschedule(&sBleTeardownWork, K_SECONDS(5));
-        return;
-    }
-
-    /* Defer the teardown state machine to the CHIP task so the BLE state
-     * (mGAPConns / mFlags / advertising) is accessed under the CHIP stack lock. */
+    /* Trampoline only: all state checks (including Thread attachment) run on
+     * the CHIP task under the CHIP stack lock. */
     TEMPORARY_RETURN_IGNORED PlatformMgr().ScheduleWork(DoBleTeardown, 0);
 }
 
@@ -366,6 +355,14 @@ void BLEManagerImpl::DoBleTeardown(intptr_t arg)
 {
     if (sBleTeardownDone || !sInstance.mBLERadioInitialized)
     {
+        return;
+    }
+
+    /* Thread must be attached before the RF handover; retry until it is. */
+    if (!ConnectivityMgr().IsThreadAttached())
+    {
+        ChipLogDetail(DeviceLayer, "BLE teardown: Thread not attached yet, retry in 5s");
+        TEMPORARY_RETURN_IGNORED k_work_reschedule(&sBleTeardownWork, K_SECONDS(5));
         return;
     }
 
