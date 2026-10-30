@@ -70,6 +70,14 @@ config TELINK_OTA_BUTTON_TEST
 	  Merge the signed binary with the same version as the main into slot-1 of merged.hex.
 	  Pressing the button initiates a forced image update.
 
+config TELINK_BATTERY_MONITOR
+	bool "Enable Telink battery monitor"
+	depends on ADC
+	help
+	  Enables the VBAT sampling service used by the Matter Power Source
+	  cluster. Requires an application overlay that maps zephyr,user
+	  io-channels to the ADC VBAT channel.
+
 config CHIP_DFU_OVER_BT_SMP
 	bool "Enable DFU over Bluetooth LE SMP feature set"
 	select BOOTLOADER_MCUBOOT

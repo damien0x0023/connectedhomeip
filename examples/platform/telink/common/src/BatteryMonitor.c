@@ -298,6 +298,18 @@ int battery_monitor_start(battery_status_cb_t cb, void * user_data)
     return 0;
 }
 
+int battery_monitor_stop(void)
+{
+    if (!initialized)
+    {
+        return -EINVAL;
+    }
+
+    (void) k_work_cancel_delayable(&sample_work);
+    started = false;
+    return 0;
+}
+
 int battery_monitor_read_now(battery_status_t * out)
 {
     uint32_t raw_mv = 0;

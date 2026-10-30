@@ -113,6 +113,11 @@ int battery_monitor_init(const battery_monitor_config_t * cfg);
 int battery_monitor_start(battery_status_cb_t cb, void * user_data);
 
 /**
+ * Stop periodic sampling. The service can be started again.
+ */
+int battery_monitor_stop(void);
+
+/**
  * Perform one synchronous sample.
  */
 int battery_monitor_read_now(battery_status_t * out);

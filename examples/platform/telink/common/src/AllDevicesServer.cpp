@@ -37,6 +37,10 @@
 #include <platform/DiagnosticDataProvider.h>
 #include <setup_payload/OnboardingCodesUtil.h>
 
+#if defined(CONFIG_TELINK_BATTERY_MONITOR)
+#include <AdcBatteryPowerSource.h>
+#endif
+
 #if CHIP_DEVICE_CONFIG_ENABLE_WIFI
 #include <device/types/root-node/WifiRootNode.h>
 #include <platform/telink/wifi/TelinkWiFiDriver.h>
@@ -156,6 +160,17 @@ CHIP_ERROR PopulateAllDevicesDataModelProvider(CommonCaseDeviceServerInitParams 
         .timerDelegate     = gTimerDelegate,
         .storageDelegate   = *initParams.persistentStorageDelegate,
     });
+
+#if defined(CONFIG_TELINK_BATTERY_MONITOR)
+    /*
+     * DeviceFactory::RegisterCreator overwrites the entry registered by the
+     * factory constructor, so the simulated power source is replaced by the
+     * VBAT backed one.
+     */
+    DeviceFactory::GetInstance().RegisterCreator("power-source", []() {
+        return std::make_unique<AdcBatteryPowerSource>();
+    });
+#endif
 
     VerifyOrReturnError(!gDeviceType.empty(), CHIP_ERROR_INVALID_ARGUMENT);
 
