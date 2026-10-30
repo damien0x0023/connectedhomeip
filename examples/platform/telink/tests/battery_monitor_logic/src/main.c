@@ -92,8 +92,11 @@ ZTEST(battery_monitor_logic, test_protection_latches_once)
     zassert_equal(battery_monitor_state_update(&state, 2100, &cfg), BATTERY_ACTION_SAFE_MODE);
     zassert_true(state.latched);
 
-    /* Same sample again: the action must not repeat. */
+    /* Same sample again: the action must not repeat and the counter must stay put. */
+    uint8_t protect_count = state.protect_count;
+
     zassert_equal(battery_monitor_state_update(&state, 2100, &cfg), BATTERY_ACTION_NONE);
+    zassert_equal(state.protect_count, protect_count);
 }
 
 ZTEST(battery_monitor_logic, test_protection_independent_of_level)

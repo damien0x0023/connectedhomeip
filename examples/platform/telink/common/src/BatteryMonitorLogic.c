@@ -211,28 +211,27 @@ battery_action_t battery_monitor_state_update(battery_monitor_state_t * state, u
      * battery that boots already below the threshold must be protected even
      * while the warning/critical ladder is still confirming.
      */
-    if (mv <= cfg->protect_down_mv)
+    if (!state->latched)
     {
-        if (state->protect_count < UINT8_MAX)
+        if (mv <= cfg->protect_down_mv)
         {
-            state->protect_count++;
+            if (state->protect_count < UINT8_MAX)
+            {
+                state->protect_count++;
+            }
         }
-    }
-    else
-    {
-        state->protect_count = 0;
-    }
+        else
+        {
+            state->protect_count = 0;
+        }
 
-    if (!state->latched && state->protect_count >= protect)
-    {
-        if (cfg->action != BATTERY_ACTION_NONE)
+        if (state->protect_count >= protect && cfg->action != BATTERY_ACTION_NONE)
         {
             state->latched = true;
             return cfg->action;
         }
     }
-
-    if (state->latched && mv >= cfg->protect_up_mv)
+    else if (mv >= cfg->protect_up_mv)
     {
         state->latched       = false;
         state->protect_count = 0;
