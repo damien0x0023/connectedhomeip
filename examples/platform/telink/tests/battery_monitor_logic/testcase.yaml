@@ -1,0 +1,7 @@
+tests:
+  battery_monitor.logic:
+    platform_allow:
+      - native_sim
+    tags:
+      - battery
+    timeout: 30

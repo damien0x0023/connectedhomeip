@@ -128,6 +128,12 @@ battery_action_t battery_monitor_get_action(void);
  */
 const battery_status_t * battery_monitor_get_status(void);
 
+/**
+ * Weak hook invoked once when the protection action fires. Applications can
+ * override it to enter a safe mode, shut down or reboot.
+ */
+void battery_monitor_action_hook(battery_action_t action);
+
 #ifdef __cplusplus
 }
 #endif
