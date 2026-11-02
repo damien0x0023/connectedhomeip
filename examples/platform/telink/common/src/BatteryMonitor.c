@@ -18,6 +18,7 @@
 #include "BatteryMonitor.h"
 #include "BatteryMonitorLogic.h"
 
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -26,6 +27,10 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/reboot.h>
 #include <zephyr/sys/util.h>
+
+#if defined(CONFIG_SETTINGS)
+#include <zephyr/settings/settings.h>
+#endif
 
 #if defined(CONFIG_SHELL)
 #include <zephyr/shell/shell.h>
@@ -57,6 +62,61 @@ static bool initialized;
 
 static bool sim_enabled;
 static uint32_t sim_mv;
+
+#if defined(CONFIG_SETTINGS)
+#define BATTERY_SETTINGS_SUBTREE "bm"
+#define BATTERY_SETTINGS_KEY     "bm/low"
+
+static bool persisted_latched;
+
+static int battery_settings_set(const char * name, size_t len, settings_read_cb read_cb, void * cb_arg)
+{
+    const char * next;
+    uint8_t value = 0;
+
+    if (!settings_name_steq(name, "low", &next) || next != NULL)
+    {
+        return -ENOENT;
+    }
+    if (len != sizeof(value))
+    {
+        return -EINVAL;
+    }
+    if (read_cb(cb_arg, &value, sizeof(value)) > 0)
+    {
+        persisted_latched = (value != 0);
+        return 0;
+    }
+    return -EIO;
+}
+
+SETTINGS_STATIC_HANDLER_DEFINE(battery_monitor, BATTERY_SETTINGS_SUBTREE, NULL, battery_settings_set, NULL, NULL);
+
+static void persist_latched(bool latched)
+{
+    uint8_t value = latched ? 1 : 0;
+
+    (void) settings_save_one(BATTERY_SETTINGS_KEY, &value, sizeof(value));
+    (void) settings_commit_subtree(BATTERY_SETTINGS_SUBTREE);
+}
+
+static bool load_persisted_latched(void)
+{
+    (void) settings_subsys_init();
+    (void) settings_load_subtree(BATTERY_SETTINGS_SUBTREE);
+    return persisted_latched;
+}
+#else
+static void persist_latched(bool latched)
+{
+    ARG_UNUSED(latched);
+}
+
+static bool load_persisted_latched(void)
+{
+    return false;
+}
+#endif
 
 static int vbat_init(void)
 {
@@ -140,6 +200,10 @@ __weak void battery_monitor_action_hook(battery_action_t action)
     }
 }
 
+__weak void battery_monitor_recovery_hook(void)
+{
+}
+
 static uint32_t next_period_ms(void)
 {
     const battery_monitor_config_t * cfg = &config;
@@ -168,6 +232,8 @@ static void sample_and_dispatch(void)
     uint32_t mv;
     bool sim;
     uint32_t sim_value;
+    bool was_latched;
+    bool now_latched;
     int rc;
 
     k_mutex_lock(&state_lock, K_FOREVER);
@@ -196,14 +262,16 @@ static void sample_and_dispatch(void)
     mv = battery_apply_calibration(raw_mv, cfg.cal_offset_mv, cfg.cal_gain_ppm);
 
     k_mutex_lock(&state_lock, K_FOREVER);
+    was_latched = state.latched;
     action      = battery_monitor_state_update(&state, mv, &cfg);
+    now_latched = state.latched;
     new_state   = state;
-    status.voltage_mv     = mv;
-    status.percent_x2     = battery_percent_from_mv(mv, cfg.curve, cfg.curve_size);
-    status.level          = new_state.level;
-    status.valid          = true;
-    status.seq            = last_status.seq + 1;
-    last_status           = status;
+    status.voltage_mv = mv;
+    status.percent_x2 = battery_percent_from_mv(mv, cfg.curve, cfg.curve_size);
+    status.level      = new_state.level;
+    status.valid      = true;
+    status.seq        = last_status.seq + 1;
+    last_status       = status;
     k_mutex_unlock(&state_lock);
 
     if (status_cb != NULL)
@@ -211,9 +279,15 @@ static void sample_and_dispatch(void)
         status_cb(&status, status_cb_user_data);
     }
 
-    if (action != BATTERY_ACTION_NONE)
+    if (!was_latched && now_latched)
     {
+        persist_latched(true);
         battery_monitor_action_hook(action);
+    }
+    else if (was_latched && !now_latched)
+    {
+        persist_latched(false);
+        battery_monitor_recovery_hook();
     }
 
     k_work_reschedule(&sample_work, K_MSEC(next_period_ms()));
@@ -258,6 +332,7 @@ int battery_monitor_init(const battery_monitor_config_t * cfg)
     k_mutex_unlock(&state_lock);
 
     battery_monitor_state_reset(&state, BATTERY_LEVEL_OK);
+    state.latched = load_persisted_latched();
 
     last_status.voltage_mv = 0;
     last_status.percent_x2 = 0;
@@ -376,6 +451,17 @@ battery_action_t battery_monitor_get_action(void)
 const battery_status_t * battery_monitor_get_status(void)
 {
     return &last_status;
+}
+
+bool battery_monitor_is_latched(void)
+{
+    bool latched;
+
+    k_mutex_lock(&state_lock, K_FOREVER);
+    latched = state.latched;
+    k_mutex_unlock(&state_lock);
+
+    return latched;
 }
 
 #if defined(CONFIG_SHELL)

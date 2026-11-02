@@ -139,6 +139,18 @@ const battery_status_t * battery_monitor_get_status(void);
  */
 void battery_monitor_action_hook(battery_action_t action);
 
+/**
+ * Weak hook invoked when the protection latch clears after the voltage has
+ * recovered above protect_up_mv.
+ */
+void battery_monitor_recovery_hook(void);
+
+/**
+ * Return true while the protection action is latched. The latch is persisted
+ * in Zephyr settings, so it also reflects the state of the previous boot.
+ */
+bool battery_monitor_is_latched(void);
+
 #ifdef __cplusplus
 }
 #endif
