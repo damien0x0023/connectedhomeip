@@ -184,30 +184,3 @@ void AdcBatteryPowerSource::Update(uint32_t voltage_mv, uint8_t percent_x2, uint
 }
 
 } // namespace chip::app
-
-using namespace chip;
-
-/*
- * Strong overrides of the weak hooks in BatteryMonitor.c. They run in the
- * Zephyr work queue, so the DeviceLayer calls are marshalled to the CHIP task.
- */
-extern "C" void battery_monitor_action_hook(battery_action_t action)
-{
-    if (action != BATTERY_ACTION_SAFE_MODE)
-    {
-        return;
-    }
-
-    TEMPORARY_RETURN_IGNORED chip::DeviceLayer::SystemLayer().ScheduleLambda([] {
-        ChipLogProgress(NotSpecified, "Battery: SAFE_MODE, disabling BLE advertising");
-        (void) chip::DeviceLayer::ConnectivityMgr().SetBLEAdvertisingEnabled(false);
-    });
-}
-
-extern "C" void battery_monitor_recovery_hook(void)
-{
-    TEMPORARY_RETURN_IGNORED chip::DeviceLayer::SystemLayer().ScheduleLambda([] {
-        ChipLogProgress(NotSpecified, "Battery: recovered, enabling BLE advertising");
-        (void) chip::DeviceLayer::ConnectivityMgr().SetBLEAdvertisingEnabled(true);
-    });
-}

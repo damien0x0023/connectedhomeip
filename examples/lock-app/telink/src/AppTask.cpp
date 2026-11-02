@@ -18,6 +18,7 @@
 
 #include "AppTask.h"
 #include "AliroDelegate.h"
+#include "BatteryReporter.h"
 #include "ButtonManager.h"
 #include "LEDManager.h"
 #include <LockManager.h>
@@ -41,6 +42,7 @@ CHIP_ERROR AppTask::Init(void)
 {
     SetExampleButtonCallbacks(LockActionEventHandler);
     ReturnErrorOnFailure(InitCommonParts());
+    ReturnErrorOnFailure(BatteryReporter::Init());
 
     LedManager::getInstance().setLed(LedManager::EAppLed_App0, LockMgr().IsLocked());
 

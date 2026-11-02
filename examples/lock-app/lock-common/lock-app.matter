@@ -3316,6 +3316,8 @@ endpoint 1 {
     ram      attribute status default = 1;
     ram      attribute order default = 1;
     ram      attribute description default = "Battery";
+    ram      attribute batVoltage;
+    ram      attribute batPercentRemaining;
     ram      attribute batChargeLevel;
     ram      attribute batReplacementNeeded;
     ram      attribute batReplaceability;

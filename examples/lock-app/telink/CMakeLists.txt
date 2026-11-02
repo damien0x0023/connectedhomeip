@@ -58,6 +58,15 @@ chip_configure_data_model(app
     ZAP_FILE ${CMAKE_CURRENT_SOURCE_DIR}/../lock-common/lock-app.zap
 )
 
+if(CONFIG_TELINK_BATTERY_MONITOR)
+  target_sources(app PRIVATE
+    src/BatteryReporter.cpp
+    ${TELINK_COMMON}/common/src/BatteryMonitor.c
+    ${TELINK_COMMON}/common/src/BatteryMonitorLogic.c
+    ${TELINK_COMMON}/common/src/BatterySafeMode.cpp
+  )
+endif()
+
 if(CONFIG_BOOTLOADER_MCUBOOT)
   target_sources(app PRIVATE ${TELINK_COMMON}/util/src/OTAUtil.cpp)
 endif()

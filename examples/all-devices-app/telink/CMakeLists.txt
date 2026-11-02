@@ -74,6 +74,7 @@ if(CONFIG_TELINK_BATTERY_MONITOR)
   target_sources(app PRIVATE
     ${TELINK_COMMON}/common/src/BatteryMonitor.c
     ${TELINK_COMMON}/common/src/BatteryMonitorLogic.c
+    ${TELINK_COMMON}/common/src/BatterySafeMode.cpp
     ${TELINK_COMMON}/common/src/AdcBatteryPowerSource.cpp
   )
 endif()
