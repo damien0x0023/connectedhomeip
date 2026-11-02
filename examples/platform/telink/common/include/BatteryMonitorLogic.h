@@ -50,6 +50,22 @@ battery_level_t battery_level_next(battery_level_t current, uint32_t mv,
  */
 uint32_t battery_apply_calibration(uint32_t raw_mv, int16_t offset_mv, int32_t gain_ppm);
 
+typedef struct
+{
+    uint32_t raw_mv;
+    uint32_t actual_mv;
+} battery_cal_point_t;
+
+/**
+ * Compute offset/gain from one or two calibration points.
+ *
+ * One point produces an offset-only calibration. Two points produce a
+ * gain (ppm) and an offset. Returns -EINVAL for invalid points and -ERANGE
+ * when the offset does not fit int16_t.
+ */
+int battery_calibration_compute(const battery_cal_point_t * points, size_t count, int16_t * offset_mv,
+                                int32_t * gain_ppm);
+
 /**
  * Convert a voltage to a doubled percentage (0..200) using a piecewise linear curve.
  */

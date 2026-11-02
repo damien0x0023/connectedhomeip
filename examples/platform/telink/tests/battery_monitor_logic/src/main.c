@@ -15,6 +15,8 @@
  *    limitations under the License.
  */
 
+#include <errno.h>
+
 #include <zephyr/ztest.h>
 
 #include "BatteryMonitorLogic.h"
@@ -194,6 +196,41 @@ ZTEST(battery_monitor_logic, test_zero_confirm_and_protect_are_clamped)
     (void) battery_monitor_state_update(&state, 2100, &cfg);
     (void) battery_monitor_state_update(&state, 2100, &cfg);
     zassert_equal(state.level, BATTERY_LEVEL_CRITICAL);
+}
+
+ZTEST(battery_monitor_logic, test_calibration_two_points)
+{
+    battery_cal_point_t points[] = { { 3000, 3100 }, { 2400, 2480 } };
+    int16_t offset                = 0;
+    int32_t gain                  = 0;
+
+    zassert_equal(battery_calibration_compute(points, 2, &offset, &gain), 0);
+    zassert_equal(gain, 33333);
+    zassert_equal(offset, 1);
+    zassert_equal(battery_apply_calibration(2400, offset, gain), 2480);
+    zassert_equal(battery_apply_calibration(3000, offset, gain), 3100);
+}
+
+ZTEST(battery_monitor_logic, test_calibration_one_point)
+{
+    battery_cal_point_t points[] = { { 3000, 3050 } };
+    int16_t offset                = 0;
+    int32_t gain                  = 0;
+
+    zassert_equal(battery_calibration_compute(points, 1, &offset, &gain), 0);
+    zassert_equal(offset, 50);
+    zassert_equal(gain, 0);
+    zassert_equal(battery_apply_calibration(3000, offset, gain), 3050);
+}
+
+ZTEST(battery_monitor_logic, test_calibration_invalid)
+{
+    battery_cal_point_t flat[] = { { 3000, 3000 }, { 3000, 3100 } };
+    int16_t offset             = 0;
+    int32_t gain               = 0;
+
+    zassert_equal(battery_calibration_compute(flat, 2, &offset, &gain), -EINVAL);
+    zassert_equal(battery_calibration_compute(flat, 0, &offset, &gain), -EINVAL);
 }
 
 ZTEST_SUITE(battery_monitor_logic, NULL, NULL, NULL, NULL, NULL);

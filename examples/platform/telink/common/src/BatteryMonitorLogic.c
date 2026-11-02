@@ -17,6 +17,7 @@
 
 #include "BatteryMonitorLogic.h"
 
+#include <errno.h>
 #include <limits.h>
 
 /* Li-MnO2 3.0 V coin cell, doubled percentage (0.5 % unit). */
@@ -123,6 +124,49 @@ uint32_t battery_apply_calibration(uint32_t raw_mv, int16_t offset_mv, int32_t g
         return UINT32_MAX;
     }
     return (uint32_t) corrected;
+}
+
+int battery_calibration_compute(const battery_cal_point_t * points, size_t count, int16_t * offset_mv,
+                                int32_t * gain_ppm)
+{
+    if (points == NULL || offset_mv == NULL || gain_ppm == NULL || count == 0)
+    {
+        return -EINVAL;
+    }
+
+    if (count == 1)
+    {
+        int32_t offset = (int32_t) points[0].actual_mv - (int32_t) points[0].raw_mv;
+
+        if (offset < INT16_MIN || offset > INT16_MAX)
+        {
+            return -ERANGE;
+        }
+        *offset_mv = (int16_t) offset;
+        *gain_ppm  = 0;
+        return 0;
+    }
+
+    int32_t raw_delta = (int32_t) points[1].raw_mv - (int32_t) points[0].raw_mv;
+    int32_t act_delta = (int32_t) points[1].actual_mv - (int32_t) points[0].actual_mv;
+
+    if (raw_delta == 0)
+    {
+        return -EINVAL;
+    }
+
+    int64_t gain = ((int64_t) act_delta - raw_delta) * 1000000 / raw_delta;
+    int64_t predicted0 = ((int64_t) points[0].raw_mv * (1000000 + gain)) / 1000000;
+    int64_t offset     = (int64_t) points[0].actual_mv - predicted0;
+
+    if (offset < INT16_MIN || offset > INT16_MAX)
+    {
+        return -ERANGE;
+    }
+
+    *offset_mv = (int16_t) offset;
+    *gain_ppm  = (int32_t) gain;
+    return 0;
 }
 
 uint8_t battery_percent_from_mv(uint32_t mv, const battery_curve_point_t * curve, size_t curve_size)
