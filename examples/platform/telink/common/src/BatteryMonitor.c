@@ -19,6 +19,7 @@
 #include "BatteryMonitorLogic.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -64,30 +65,71 @@ static bool sim_enabled;
 static uint32_t sim_mv;
 
 #if defined(CONFIG_SETTINGS)
-#define BATTERY_SETTINGS_SUBTREE "bm"
-#define BATTERY_SETTINGS_KEY     "bm/low"
+#define BATTERY_SETTINGS_SUBTREE    "bm"
+#define BATTERY_SETTINGS_KEY_LOW    "bm/low"
+#define BATTERY_SETTINGS_KEY_OFFSET "bm/cal_offset"
+#define BATTERY_SETTINGS_KEY_GAIN   "bm/cal_gain"
 
 static bool persisted_latched;
+static int16_t persisted_cal_offset;
+static int32_t persisted_cal_gain;
+static bool persisted_cal_valid;
 
 static int battery_settings_set(const char * name, size_t len, settings_read_cb read_cb, void * cb_arg)
 {
     const char * next;
-    uint8_t value = 0;
 
-    if (!settings_name_steq(name, "low", &next) || next != NULL)
+    if (settings_name_steq(name, "low", &next) && next == NULL)
     {
-        return -ENOENT;
-    }
-    if (len != sizeof(value))
-    {
-        return -EINVAL;
-    }
-    if (read_cb(cb_arg, &value, sizeof(value)) > 0)
-    {
+        uint8_t value = 0;
+
+        if (len != sizeof(value))
+        {
+            return -EINVAL;
+        }
+        if (read_cb(cb_arg, &value, sizeof(value)) <= 0)
+        {
+            return -EIO;
+        }
         persisted_latched = (value != 0);
         return 0;
     }
-    return -EIO;
+
+    if (settings_name_steq(name, "cal_offset", &next) && next == NULL)
+    {
+        int16_t value = 0;
+
+        if (len != sizeof(value))
+        {
+            return -EINVAL;
+        }
+        if (read_cb(cb_arg, &value, sizeof(value)) <= 0)
+        {
+            return -EIO;
+        }
+        persisted_cal_offset = value;
+        persisted_cal_valid  = true;
+        return 0;
+    }
+
+    if (settings_name_steq(name, "cal_gain", &next) && next == NULL)
+    {
+        int32_t value = 0;
+
+        if (len != sizeof(value))
+        {
+            return -EINVAL;
+        }
+        if (read_cb(cb_arg, &value, sizeof(value)) <= 0)
+        {
+            return -EIO;
+        }
+        persisted_cal_gain  = value;
+        persisted_cal_valid = true;
+        return 0;
+    }
+
+    return -ENOENT;
 }
 
 SETTINGS_STATIC_HANDLER_DEFINE(battery_monitor, BATTERY_SETTINGS_SUBTREE, NULL, battery_settings_set, NULL, NULL);
@@ -96,15 +138,26 @@ static void persist_latched(bool latched)
 {
     uint8_t value = latched ? 1 : 0;
 
-    (void) settings_save_one(BATTERY_SETTINGS_KEY, &value, sizeof(value));
+    (void) settings_save_one(BATTERY_SETTINGS_KEY_LOW, &value, sizeof(value));
     (void) settings_commit_subtree(BATTERY_SETTINGS_SUBTREE);
 }
 
-static bool load_persisted_latched(void)
+static void persist_calibration(int16_t offset_mv, int32_t gain_ppm)
+{
+    (void) settings_save_one(BATTERY_SETTINGS_KEY_OFFSET, &offset_mv, sizeof(offset_mv));
+    (void) settings_save_one(BATTERY_SETTINGS_KEY_GAIN, &gain_ppm, sizeof(gain_ppm));
+    (void) settings_commit_subtree(BATTERY_SETTINGS_SUBTREE);
+}
+
+static void load_persisted_state(bool * latched, int16_t * offset_mv, int32_t * gain_ppm, bool * cal_valid)
 {
     (void) settings_subsys_init();
     (void) settings_load_subtree(BATTERY_SETTINGS_SUBTREE);
-    return persisted_latched;
+
+    *latched   = persisted_latched;
+    *offset_mv = persisted_cal_offset;
+    *gain_ppm  = persisted_cal_gain;
+    *cal_valid = persisted_cal_valid;
 }
 #else
 static void persist_latched(bool latched)
@@ -112,9 +165,18 @@ static void persist_latched(bool latched)
     ARG_UNUSED(latched);
 }
 
-static bool load_persisted_latched(void)
+static void persist_calibration(int16_t offset_mv, int32_t gain_ppm)
 {
-    return false;
+    ARG_UNUSED(offset_mv);
+    ARG_UNUSED(gain_ppm);
+}
+
+static void load_persisted_state(bool * latched, int16_t * offset_mv, int32_t * gain_ppm, bool * cal_valid)
+{
+    *latched   = false;
+    *offset_mv = 0;
+    *gain_ppm  = 0;
+    *cal_valid = false;
 }
 #endif
 
@@ -332,7 +394,22 @@ int battery_monitor_init(const battery_monitor_config_t * cfg)
     k_mutex_unlock(&state_lock);
 
     battery_monitor_state_reset(&state, BATTERY_LEVEL_OK);
-    state.latched = load_persisted_latched();
+
+    bool persisted_latch;
+    int16_t persisted_offset;
+    int32_t persisted_gain;
+    bool persisted_cal;
+
+    load_persisted_state(&persisted_latch, &persisted_offset, &persisted_gain, &persisted_cal);
+
+    state.latched = persisted_latch;
+    if (persisted_cal)
+    {
+        k_mutex_lock(&state_lock, K_FOREVER);
+        config.cal_offset_mv = persisted_offset;
+        config.cal_gain_ppm  = persisted_gain;
+        k_mutex_unlock(&state_lock);
+    }
 
     last_status.voltage_mv = 0;
     last_status.percent_x2 = 0;
@@ -538,34 +615,142 @@ static int cmd_sim(const struct shell * sh, size_t argc, char ** argv)
     return 0;
 }
 
+static battery_cal_point_t cal_points[2];
+static size_t cal_point_count;
+
+static int read_raw_for_cal(uint32_t * raw)
+{
+    bool sim;
+    uint32_t sim_value;
+
+    k_mutex_lock(&state_lock, K_FOREVER);
+    sim       = sim_enabled;
+    sim_value = sim_mv;
+    k_mutex_unlock(&state_lock);
+
+    if (sim)
+    {
+        *raw = sim_value;
+        return 0;
+    }
+
+    return vbat_read_raw(raw);
+}
+
 static int cmd_cal(const struct shell * sh, size_t argc, char ** argv)
 {
     uint32_t actual_mv;
     uint32_t raw_mv = 0;
     int rc;
 
-    if (argc != 2)
+    if (argc == 2 && strcmp(argv[1], "show") == 0)
     {
-        shell_error(sh, "usage: bat cal <actual_mv>");
-        return -EINVAL;
+        k_mutex_lock(&state_lock, K_FOREVER);
+        int16_t offset = config.cal_offset_mv;
+        int32_t gain   = config.cal_gain_ppm;
+        k_mutex_unlock(&state_lock);
+
+        shell_print(sh, "offset=%d mV gain=%d ppm points=%u", offset, gain, (unsigned) cal_point_count);
+        for (size_t i = 0; i < cal_point_count; i++)
+        {
+            shell_print(sh, "  point[%u] raw=%u actual=%u", (unsigned) i, cal_points[i].raw_mv,
+                        cal_points[i].actual_mv);
+        }
+        return 0;
     }
 
-    actual_mv = (uint32_t) strtoul(argv[1], NULL, 0);
-    rc        = vbat_read_raw(&raw_mv);
-    if (rc != 0)
+    if (argc == 2 && strcmp(argv[1], "reset") == 0)
     {
-        shell_error(sh, "sample failed: %d", rc);
-        return rc;
+        k_mutex_lock(&state_lock, K_FOREVER);
+        config.cal_offset_mv = 0;
+        config.cal_gain_ppm  = 0;
+        k_mutex_unlock(&state_lock);
+
+        persist_calibration(0, 0);
+        cal_point_count = 0;
+        shell_print(sh, "calibration reset");
+        return 0;
     }
 
-    k_mutex_lock(&state_lock, K_FOREVER);
-    config.cal_offset_mv = (int16_t) ((int32_t) actual_mv - (int32_t) raw_mv);
-    config.cal_gain_ppm  = 0;
-    k_mutex_unlock(&state_lock);
+    if (argc == 2 && strcmp(argv[1], "apply") == 0)
+    {
+        int16_t offset = 0;
+        int32_t gain   = 0;
 
-    shell_print(sh, "raw=%u mV actual=%u mV offset=%d mV", raw_mv, actual_mv,
-                (int32_t) actual_mv - (int32_t) raw_mv);
-    return 0;
+        rc = battery_calibration_compute(cal_points, cal_point_count, &offset, &gain);
+        if (rc != 0)
+        {
+            shell_error(sh, "calibration compute failed: %d (need 1 or 2 points)", rc);
+            return rc;
+        }
+
+        k_mutex_lock(&state_lock, K_FOREVER);
+        config.cal_offset_mv = offset;
+        config.cal_gain_ppm  = gain;
+        k_mutex_unlock(&state_lock);
+
+        persist_calibration(offset, gain);
+        cal_point_count = 0;
+        shell_print(sh, "applied offset=%d mV gain=%d ppm", offset, gain);
+        return 0;
+    }
+
+    if (argc == 3 && strcmp(argv[1], "point") == 0)
+    {
+        actual_mv = (uint32_t) strtoul(argv[2], NULL, 0);
+        rc        = read_raw_for_cal(&raw_mv);
+        if (rc != 0)
+        {
+            shell_error(sh, "sample failed: %d", rc);
+            return rc;
+        }
+
+        if (cal_point_count >= ARRAY_SIZE(cal_points))
+        {
+            shell_error(sh, "already have 2 points; run 'bat cal reset' first");
+            return -ENOMEM;
+        }
+
+        cal_points[cal_point_count].raw_mv    = raw_mv;
+        cal_points[cal_point_count].actual_mv = actual_mv;
+        cal_point_count++;
+
+        shell_print(sh, "point %u: raw=%u actual=%u", (unsigned) (cal_point_count - 1), raw_mv, actual_mv);
+        return 0;
+    }
+
+    if (argc == 2)
+    {
+        int32_t offset;
+
+        actual_mv = (uint32_t) strtoul(argv[1], NULL, 0);
+        rc        = read_raw_for_cal(&raw_mv);
+        if (rc != 0)
+        {
+            shell_error(sh, "sample failed: %d", rc);
+            return rc;
+        }
+
+        offset = (int32_t) actual_mv - (int32_t) raw_mv;
+        if (offset < INT16_MIN || offset > INT16_MAX)
+        {
+            shell_error(sh, "offset out of range: %d", offset);
+            return -ERANGE;
+        }
+
+        k_mutex_lock(&state_lock, K_FOREVER);
+        config.cal_offset_mv = (int16_t) offset;
+        config.cal_gain_ppm  = 0;
+        k_mutex_unlock(&state_lock);
+
+        persist_calibration((int16_t) offset, 0);
+        cal_point_count = 0;
+        shell_print(sh, "raw=%u mV actual=%u mV offset=%d mV", raw_mv, actual_mv, offset);
+        return 0;
+    }
+
+    shell_error(sh, "usage: bat cal <actual_mv> | point <actual_mv> | apply | show | reset");
+    return -EINVAL;
 }
 
 static int cmd_action(const struct shell * sh, size_t argc, char ** argv)
@@ -606,7 +791,9 @@ SHELL_STATIC_SUBCMD_SET_CREATE(bat_commands,
                                SHELL_CMD_ARG(read, NULL, "Sample the battery now", cmd_read, 1, 0),
                                SHELL_CMD_ARG(level, NULL, "Show the state machine", cmd_level, 1, 0),
                                SHELL_CMD_ARG(sim, NULL, "Inject a voltage: sim <mv|off>", cmd_sim, 2, 0),
-                               SHELL_CMD_ARG(cal, NULL, "Calibrate offset: cal <actual_mv>", cmd_cal, 2, 0),
+                               SHELL_CMD_ARG(cal, NULL,
+                                             "Calibrate: cal <actual_mv> | point <actual_mv> | apply | show | reset",
+                                             cmd_cal, 2, 1),
                                SHELL_CMD_ARG(action, NULL, "Set protection action", cmd_action, 2, 0),
                                SHELL_SUBCMD_SET_END);
 
