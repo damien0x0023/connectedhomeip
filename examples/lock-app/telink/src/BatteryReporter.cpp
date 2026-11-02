@@ -21,6 +21,7 @@
 
 #include <app-common/zap-generated/attributes/Accessors.h>
 #include <app-common/zap-generated/ids/Clusters.h>
+#include <app/clusters/power-source-server/power-source-server.h>
 #include <app/util/MarkAttributeDirty.h>
 #include <app/util/attribute-storage.h>
 #include <lib/support/CodeUtils.h>
@@ -86,6 +87,13 @@ CHIP_ERROR BatteryReporter::Init()
     {
         ChipLogError(NotSpecified, "BatteryReporter: no battery PowerSource endpoint");
         return CHIP_ERROR_NOT_FOUND;
+    }
+
+    EndpointId endpointList[] = { sEndpoint };
+    CHIP_ERROR err = Clusters::PowerSourceServer::Instance().SetEndpointList(sEndpoint, Span<EndpointId>(endpointList, 1));
+    if (err != CHIP_NO_ERROR)
+    {
+        ChipLogError(NotSpecified, "BatteryReporter: SetEndpointList failed: %" CHIP_ERROR_FORMAT, err.Format());
     }
 
     battery_monitor_config_t config;
