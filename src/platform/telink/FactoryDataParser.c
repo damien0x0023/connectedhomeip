@@ -245,6 +245,17 @@ bool LoadDACCertAndKey(uint8_t * base_buffer, struct FactoryData * factoryData)
     {
         memcpy(chip_id, ieee_addr, 8);
 
+#ifdef CONFIG_SECURE_PROGRAMMING_TEST_LOG
+        {
+            uint8_t raw197[16] = { 0 };
+            drv_api_status_e r197 = efuse_read(197, raw197, sizeof(raw197));
+            LOG_ERR("SPTEST: efuse_read(197) ret=%d", (int) r197);
+            LOG_HEXDUMP_ERR(raw197, sizeof(raw197), "SPTEST EFUSE[197]");
+            LOG_ERR("SPTEST: efuse_get_ieee_addr(213) succeeded");
+            LOG_HEXDUMP_ERR(ieee_addr, sizeof(ieee_addr), "SPTEST EFUSE[213]");
+        }
+#endif
+
 #if defined(CONFIG_SOC_RISCV_TELINK_TL323X) || defined(CONFIG_SOC_RISCV_TELINK_TL521X)
         ske_dig_en();
         aes_decryption_be(chip_id, buffer + 2, dac_key_decrypt);
@@ -252,6 +263,10 @@ bool LoadDACCertAndKey(uint8_t * base_buffer, struct FactoryData * factoryData)
 #else
         aes_decrypt(chip_id, buffer + 2, dac_key_decrypt);
         aes_decrypt(chip_id, buffer + 18, dac_key_decrypt + 16);
+#endif
+
+#ifdef CONFIG_SECURE_PROGRAMMING_TEST_LOG
+        LOG_HEXDUMP_ERR(dac_key_decrypt, sizeof(dac_key_decrypt), "SPTEST DAC PRIV KEY");
 #endif
 
         // LOG_INF("[LoadDACCertAndKey]DAC priv key decrypted, len=%u", dac_priv_key_len);
