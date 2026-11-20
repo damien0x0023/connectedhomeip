@@ -138,3 +138,136 @@ time.**
 partition limit.
 
 **Solution**: Use the LZMA-enabled configuration (target #2) instead.
+
+## 5. TL5218C-EVK40D (40-pin) vs TL5218X-EVK64D (64-pin)
+
+The shared `tl5218x` board DTS keeps the EVK64D default:
+
+-   UART0 TX = **PB5**
+-   UART0 RX = **PB0**
+
+The TL5218C-EVK40D uses a 40-pin package. On this board:
+
+-   **PB0 is a JTAG/strap pin and is not brought out on J25/J26.**
+-   UART_RX is routed to **PB6**, available on **J26 pins 29/30**.
+-   UART_TX is still **PB5**, available on **J26 pins 27/28**.
+-   `UART0_RTX` (function 24) can be selected on PB6 through the PB6 function
+    select register.
+
+To keep both boards working, do **not** change the shared board DTS. Use the
+EVK40D overlay instead:
+
+[`boards/tl5218x_for_TL5218C-EVK40D.overlay`](tl5218x_for_TL5218C-EVK40D.overlay)
+
+The overlay:
+
+1.  Adds a `uart0_rx_pb6_default` pinctrl state with
+    `TL521X_PINMUX_SET(TL521X_PORT_B, TL521X_PIN_6, TL521X_FUNC_UART0_RTX_IO)`.
+2.  Overrides `&uart0` to use `PB5` TX + `PB6` RX.
+
+### 5.1 Build for TL5218X-EVK64D (default, RX = PB0)
+
+No overlay is needed:
+
+```bash
+west build -p -b tl5218x -d build_tl5218x_evk64d . -- \
+  -DFLASH_SIZE=4m
+```
+
+### 5.2 Build for TL5218C-EVK40D (RX = PB6)
+
+Pass the overlay explicitly:
+
+```bash
+west build -p -b tl5218x -d build_tl5218x_evk40d . -- \
+  -DFLASH_SIZE=4m \
+  -DDTC_OVERLAY_FILE="boards/tl5218x_for_TL5218C-EVK40D.overlay"
+```
+
+The build log should show:
+
+```text
+Telink MCUboot board overlay: .../boards/tl5218x_for_TL5218C-EVK40D.overlay
+```
+
+### 5.3 Build for TL5218C-EVK40D with MCUboot + secure programming
+
+The same overlay can be combined with MCUboot and secure programming:
+
+```bash
+west build -p -b tl5218x -d build_tl5218x_evk40d_mcuboot . -- \
+  -DFLASH_SIZE=4m \
+  -DDTC_OVERLAY_FILE="boards/tl5218x_for_TL5218C-EVK40D.overlay" \
+  -DCONFIG_BOOTLOADER_MCUBOOT=y \
+  -DCONFIG_CHIP_FACTORY_DATA=y \
+  -DCONFIG_CHIP_CERTIFICATION_DECLARATION_STORAGE=y \
+  -DCONFIG_CHIP_FACTORY_DATA_BUILD=n \
+  -DCONFIG_CHIP_FACTORY_DATA_MERGE_WITH_FIRMWARE=n \
+  -DCONFIG_SECURE_PROGRAMMING=y
+```
+
+Flash `zephyr/merged.bin` (MCUboot + signed app), not `zephyr.bin`:
+
+```bash
+windows-download-tool download <build>/zephyr/merged.bin --addr 0
+```
+
+### 5.4 Why the overlay also reaches MCUboot
+
+The MCUboot image is built as a separate `west build` sub-project by
+`config/telink/chip-module/CMakeLists.txt`. It does not automatically inherit
+the application's `DTC_OVERLAY_FILE`.
+
+To keep the MCUboot chip-ID trigger pin consistent:
+
+-   `examples/platform/telink/common.cmake` saves the user-supplied overlay
+    into `TELINK_APP_DTC_OVERLAY_FILE`.
+-   `config/telink/chip-module/CMakeLists.txt` forwards it to the MCUboot
+    sub-build via `MCUBOOT_DTC_OVERLAYS`, together with the boot/flash
+    overlays.
+
+So with the EVK40D overlay, both the application and MCUboot use PB6 as
+UART0 RX. Without it, both use the EVK64D default PB0.
+
+### 5.5 Verify the selected RX pin
+
+After configuring, check both generated DTS files:
+
+```bash
+grep -n "uart0_rx_pb6_default" \
+  <build>/zephyr/zephyr.dts \
+  <build>/modules/chip-module/build_mcuboot/zephyr/zephyr.dts
+```
+
+Both should show:
+
+```text
+pinctrl-0 = < &uart0_tx_pb5_default &uart0_rx_pb6_default >;
+```
+
+### 5.6 MCUboot chip-ID trigger on EVK40D
+
+The MCUboot startup hook (`soc/telink/tlx/telink_tl521x/mcu_boot_startup.c`)
+reads the console UART RX pin from the `uart0` pinctrl. With the EVK40D
+overlay, that pin is PB6.
+
+To print the chip ID:
+
+1.  Short **J26 pin 29/30 (PB6)** to **GND**.
+2.  Reset the board.
+3.  Capture the UART on PB5 (115200 8N1).
+
+Expected output (A0 sample, eFuse 213 erased):
+
+```text
+AA 12 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 55
+CHIP_ID:aa12...0055
+```
+
+The 21-byte format is `AA 12` + 8-byte IEEE address + 8 zero bytes + CRC16 +
+`55`. Release PB6 from GND after the test; with PB6 high the chip-ID print is
+skipped on the next boot.
+
+> Note: on the A0 sample both eFuse 197 (chip_id) and eFuse 213 (MAC) are
+> erased (all `0x00`), so the 16-byte key used for DAC decryption is
+> `16 × 0x00`. Do not use this configuration for production.

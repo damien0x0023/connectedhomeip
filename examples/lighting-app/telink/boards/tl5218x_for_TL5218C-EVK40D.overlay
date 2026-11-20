@@ -1,0 +1,34 @@
+/*
+ * Copyright (c) 2026 Telink Semiconductor
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
+ * TL5218C-EVK40D (40-pin package) UART0 RX override.
+ *
+ * The shared tl5218x board DTS uses UART0 RX = PB0, which is the default for
+ * the TL5218X-EVK64D (64-pin package). On the TL5218C-EVK40D, PB0 is a JTAG
+ * strap and is not brought out on J25/J26; UART_RX is routed to PB6
+ * (J26 pins 29/30).
+ *
+ * Build with:
+ *   -DDTC_OVERLAY_FILE="boards/tl5218x_for_TL5218C-EVK40D.overlay"
+ *
+ * The same overlay is forwarded to the MCUboot sub-build, so the MCUboot
+ * chip-ID trigger in soc/telink/tlx/telink_tl521x/mcu_boot_startup.c checks
+ * PB6 as well.
+ */
+
+#include <zephyr/dt-bindings/pinctrl/tl521x-pinctrl.h>
+
+&pinctrl {
+	uart0_rx_pb6_default: uart0_rx_pb6_default {
+		pinmux = <TL521X_PINMUX_SET(TL521X_PORT_B, TL521X_PIN_6, TL521X_FUNC_UART0_RTX_IO)>;
+	};
+};
+
+&uart0 {
+	pinctrl-0 = <&uart0_tx_pb5_default &uart0_rx_pb6_default>;
+	pinctrl-names = "default";
+};
