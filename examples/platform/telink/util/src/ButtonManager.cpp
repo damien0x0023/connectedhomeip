@@ -76,6 +76,10 @@ void ButtonManager::linkBackend(ButtonBackend & backend)
 
 void ButtonManager::onButton(size_t button, bool pressed, void * buttonMgr)
 {
+#ifdef CONFIG_SECURE_PROGRAMMING_TEST_LOG
+    LOG_INF("BTN raw: button=%u pressed=%d", (unsigned) button, (int) pressed);
+#endif
+
     ButtonManager * buttonManager = static_cast<ButtonManager *>(buttonMgr);
 
     for (auto it = buttonManager->m_events.begin(); it != buttonManager->m_events.end(); ++it)
