@@ -217,6 +217,20 @@ if(NOT EXISTS "${FLASH_DTC_OVERLAY_FILE}")
   unset(FLASH_DTC_OVERLAY_FILE)
 endif()
 
+# Save the user-supplied board overlay (e.g. TL5218C-EVK40D) so the MCUboot
+# sub-build can apply the same board-specific pinmux. The MCUboot build
+# otherwise only receives the boot/flash overlays.
+if(NOT DEFINED TELINK_APP_DTC_OVERLAY_FILE)
+  set(TELINK_APP_DTC_OVERLAY_FILE "" CACHE STRING "" FORCE)
+endif()
+if(DTC_OVERLAY_FILE)
+  get_filename_component(_telink_app_dtc_overlay "${DTC_OVERLAY_FILE}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+  if(EXISTS "${_telink_app_dtc_overlay}")
+    set(TELINK_APP_DTC_OVERLAY_FILE "${_telink_app_dtc_overlay}" CACHE STRING "" FORCE)
+    message(STATUS "Telink MCUboot board overlay: ${TELINK_APP_DTC_OVERLAY_FILE}")
+  endif()
+endif()
+
 if(DTC_OVERLAY_FILE)
   set(DTC_OVERLAY_FILE
     "${DTC_OVERLAY_FILE} ${GLOBAL_DTC_OVERLAY_FILE} ${USB_DTC_OVERLAY_FILE} ${MARS_DTC_OVERLAY_FILE} ${FLASH_DTC_OVERLAY_FILE} ${LOCAL_DTC_OVERLAY_FILE} ${TFLM_OVERLAY_FILE} ${NFC_ONBOARDING_PAYLOAD_OVERLAY_FILE}"
