@@ -248,8 +248,8 @@ bool LoadDACCertAndKey(uint8_t * base_buffer, struct FactoryData * factoryData)
 #ifdef CONFIG_SECURE_PROGRAMMING_TEST_LOG
         {
             uint8_t raw197[16] = { 0 };
-            drv_api_status_e r197 = efuse_read(197, raw197, sizeof(raw197));
-            LOG_ERR("SPTEST: efuse_read(197) ret=%d", (int) r197);
+            drv_api_status_e r197 = efuse_get_chip_id(raw197);
+            LOG_ERR("SPTEST: efuse_get_chip_id ret=%d", (int) r197);
             LOG_HEXDUMP_ERR(raw197, sizeof(raw197), "SPTEST EFUSE[197]");
             LOG_ERR("SPTEST: efuse_get_ieee_addr(213) succeeded");
             LOG_HEXDUMP_ERR(ieee_addr, sizeof(ieee_addr), "SPTEST EFUSE[213]");
